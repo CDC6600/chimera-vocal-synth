@@ -1,0 +1,8 @@
+# Montreal Forced Aligner settings for `chimera compare tsp`, the same for the recordings and the
+# synth's renders, so both get one timing convention. Every utterance is its own "speaker" (its
+# own directory), so no measure of one file depends on another.
+# dither 0: the model's features otherwise add random noise, and the same file aligns differently
+# from run to run (on 65 of 120 renders, by 10-20 ms at the 99th percentile, up to 120 ms).
+dither: 0
+# speaker adaptation (fMLLR) is fitted over a speaker's files: off, for the same reason
+uses_speaker_adaptation: false
