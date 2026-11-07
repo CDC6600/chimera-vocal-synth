@@ -82,8 +82,8 @@ cared more about pronunciation. So batch 2 swaps the roles of the judges:
 ## What you may not change
 
 - **The judges.** Don't touch any of these:
-  - `crates/chimera-cli/src/compare.rs`, `compare/score.rs`
-  - `tools/asr/`
+  - `crates/chimera-cli/src/compare.rs`, `compare/score.rs`, `compare/tsp.rs`
+  - `tools/asr/`, `tools/tsp/`
   - the held-out songs, the dataset, the sentences
   - `crates/chimera/tests/consonant_artifacts.rs`
 

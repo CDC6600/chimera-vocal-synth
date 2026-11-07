@@ -1381,3 +1381,29 @@ MCD 8.614 dB. `out/hill/best` holds this run, and the listening page was rebuilt
 - **Declined:** a stop shorter than 10 ms still holds its closure past its end (the minimum hold
   in `oral_gestures_into`). It predates this batch, and no planner produces one (the sung floor is
   12 ms).
+
+## A judge against real voices (2026-11-07, between batches)
+
+The owner found batch 2 much harder to hear than batch 1 (now 3, before 1, can't tell 4, songs
+can't tell). Whisper had called it 4 points better: one noisy number that says nothing about
+which sound is wrong. The owner asked for structural fixes rather than judge-loosening (the
+proposed wider MCD guard), and for a judge built on real voices.
+
+`chimera compare tsp` ([../speech-comparison.md](../speech-comparison.md)) says the Harvard
+sentences 23 real speakers read (the TSP speech database) and compares each sound with theirs.
+No batch uses it yet: whether it decides the next batch, and Whisper guards, is the owner's call.
+
+- **The score.** 1.583 on the training speakers' sentences, 1.706 held-out. A real speaker gets
+  0.277. It scores consonant levels, sibilant centroids and timing; spectrum, formants, voice
+  quality, voicing and intonation are reported as diagnostics.
+- **Both batches gained on it.** 1.994 before batch 1, 1.797 after, 1.583 after batch 2.
+- **The leads it gives, largest first:**
+  - **Female sibilant levels and centroids.** /ʃ/ −23 dB re her stressed vowels against the
+    women's −7; /tʃ/ −26 against −9. /s/ centroid 4.7 kHz against 7.4; /z/ 4.0 against 7.1. No
+    batch has moved the levels.
+  - **Short closures and affricates.** /k/ 0.7 of a mean phone against 1.1–1.2; /dʒ/ 0.5 against
+    1.2–1.3.
+  - **/ð/ and /v/** 7–11 dB too loud.
+  - **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13).
+  - **A diagnostic:** the voice lacks 1–4 kHz presence after batch 1 (female 1–2 kHz −16.1 dB re
+    0–8 kHz, women −10.8). That is a spectral shape to fix, not a tilt.

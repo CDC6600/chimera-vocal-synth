@@ -38,6 +38,7 @@ Offline renders and measurement:
 cargo run --release -p chimera-cli -- render speech|text|song|notes|beatbox|creature|vowels …
 cargo run --release -p chimera-cli -- diagnose       # nasal leakage, formants, bandwidths, pitch
 cargo run --release -p chimera-cli -- compare csd    # against a real singer (docs/csd-comparison.md)
+cargo run --release -p chimera-cli -- compare tsp    # against 23 real speakers (docs/speech-comparison.md)
 bun tools/spectrogram.ts in.wav out.png
 ```
 
@@ -51,6 +52,8 @@ bun tools/spectrogram.ts in.wav out.png
   display look.
 - [docs/csd-comparison.md](docs/csd-comparison.md): scoring the voice against the Children's
   Song Dataset.
+- [docs/speech-comparison.md](docs/speech-comparison.md): scoring the speech against real
+  speakers, phone by phone (the TSP speech database).
 - [docs/hill-climb/](docs/hill-climb/): the rules and log for tuning the voice one measured
   step at a time.
 
