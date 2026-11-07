@@ -46,6 +46,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod score;
+pub mod tsp;
 
 /// A gap between notes longer than this (s) ends a phrase: the synth stops and breathes.
 const PHRASE_GAP: f64 = 0.08;
