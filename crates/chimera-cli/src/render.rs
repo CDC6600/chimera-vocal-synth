@@ -23,7 +23,7 @@ use chimera::phonetics::sing::{
 };
 use chimera::phonetics::songs::DEMO_SONGS;
 use chimera::phonetics::syllables::lyrics_to_syllables;
-use chimera::phonetics::{Intonation, Syllable};
+use chimera::phonetics::{Intonation, Plan, Syllable};
 use chimera::voice::human_voice::{HumanVoice, SCOPE_POINTS, SourcePatch, VoiceTelemetry};
 use std::io::Read;
 use std::time::Instant;
@@ -123,18 +123,28 @@ pub fn speech(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// English text through G2P and the phrase planner. `render text <out> ["Text."] [body]`
-pub fn text(ctx: &Ctx, a: &[String]) -> Result<(), String> {
-    let name = arg(a, 0, "out/text");
-    let text = arg(a, 1, "Hello world.");
-    let body_name = arg(a, 2, "male");
-    let b = body(body_name)?;
-    let f0 = match body_name {
+/// A sentence said by the text path: the samples and the plan.
+pub struct Spoken {
+    pub out: Vec<f32>,
+    pub plan: Plan,
+    /// the IPA `render text` prints, phrases joined by " | "
+    pub shown: String,
+}
+
+/// The f0 `render text` speaks at in each body.
+pub fn text_f0(body_name: &str) -> f64 {
+    match body_name {
         "female" => 205.0,
         "child" => 250.0,
         _ => 112.0,
-    };
-    let g = g2p()?;
+    }
+}
+
+/// Say `text` the way `render text` does: CMUdict G2P, the phrase planner from t0 = 50 ms, the
+/// body's speaking f0, 300 ms of tail. `chimera compare tsp` measures exactly these renders.
+pub fn say(g: &EnglishG2P, text: &str, body_name: &str) -> Result<Spoken, String> {
+    let b = body(body_name)?;
+    let f0 = text_f0(body_name);
     let phrases = g.to_phrases(text);
     let shown: Vec<String> = phrases
         .iter()
@@ -151,7 +161,6 @@ pub fn text(ctx: &Ctx, a: &[String]) -> Result<(), String> {
             }
         })
         .collect();
-    println!("{}", shown.join(" | "));
     let mut voice = HumanVoice::new(FS, b, 2);
     voice.set_source(&SourcePatch::f0(f0));
     let inputs: Vec<PhraseInput> = phrases
@@ -174,14 +183,25 @@ pub fn text(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     voice.schedule(&plan.gestures);
     let total = js_round(FS * (plan.end + 0.3)) as usize;
     let mut out = vec![0f32; total];
-    let t = Instant::now();
     render_blocks(&mut voice, &mut out);
+    Ok(Spoken { out, plan, shown: shown.join(" | ") })
+}
+
+/// English text through G2P and the phrase planner. `render text <out> ["Text."] [body]`
+pub fn text(ctx: &Ctx, a: &[String]) -> Result<(), String> {
+    let name = arg(a, 0, "out/text");
+    let text = arg(a, 1, "Hello world.");
+    let body_name = arg(a, 2, "male");
+    let g = g2p()?;
+    let t = Instant::now();
+    let s = say(&g, text, body_name)?;
     let ms = ms_since(t);
+    println!("{}", s.shown);
     let file = wav_name(name);
-    ctx.write_wav(&file, &out)?;
+    ctx.write_wav(&file, &s.out)?;
     println!(
         "wrote {file}  {} s, rendered in {} ms",
-        fixed(total as f64 / FS, 2),
+        fixed(s.out.len() as f64 / FS, 2),
         fixed(ms, 0)
     );
     Ok(())
