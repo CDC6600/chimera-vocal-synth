@@ -12,6 +12,11 @@ if [ ! -x "$cache/env/bin/mfa" ]; then
   chmod +x "$cache/micromamba"
   "$cache/micromamba" create -y -q -p "$cache/env" -c conda-forge montreal-forced-aligner=3.4.3 python=3.11
 fi
+have="$(mfa version 2>/dev/null || true)"
+if [ "$have" != "3.4.3" ]; then
+  echo "$cache/env has MFA ${have:-?}, not 3.4.3: remove $cache/env and run this again" >&2
+  exit 1
+fi
 models="$cache/mfa/pretrained_models"
 check() { echo "$1  $2" | sha256sum -c --status 2>/dev/null; }
 acoustic=d35ce271ded357d833d2f4b8d1041dc3748b9538567ba13f2c697f4e4126711b

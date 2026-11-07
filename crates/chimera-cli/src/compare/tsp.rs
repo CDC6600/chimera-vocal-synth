@@ -215,6 +215,16 @@ fn mfa_command(root: &str) -> Result<(std::process::Command, String), String> {
     Ok((c, model))
 }
 
+/// MFA's version and a fingerprint of its settings (tools/tsp/mfa.yaml): the renders' boundaries
+/// move with either, so the verdict compares only runs that share both.
+fn aligner_id(dir: &str) -> Result<String, String> {
+    let dir = std::fs::canonicalize(dir).map_err(|e| format!("{dir}: {e}"))?.to_string_lossy().into_owned();
+    let (mut mfa, _) = mfa_command(&format!("{dir}/root"))?;
+    let out = mfa.arg("version").output().map_err(|e| format!("mfa version: {e}"))?;
+    let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok(format!("mfa {version}, settings {}", fingerprint(&repo_path("tools/tsp/mfa.yaml"))))
+}
+
 /// Align the renders with MFA as the recordings were (tools/tsp/mfa.yaml: one utterance per
 /// "speaker", no dither, no speaker adaptation, so each file's alignment depends on that file
 /// alone and is the same on every run), with a dictionary of exactly what the G2P said.
@@ -831,6 +841,7 @@ pub fn run(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     let g = g2p()?;
     let t = std::time::Instant::now();
     let synth_phones = align_synth(&g, &said, &texts, &format!("{out_dir}/mfa"), jobs)?;
+    let aligner = aligner_id(&format!("{out_dir}/mfa"))?;
     println!("aligned {} of {} renders in {:.0} s", synth_phones.len(), said.len(), t.elapsed().as_secs_f64());
     let t = std::time::Instant::now();
     let next = AtomicUsize::new(0);
@@ -861,7 +872,7 @@ pub fn run(ctx: &Ctx, a: &[String]) -> Result<(), String> {
         eprintln!("{e}");
     }
     println!("measured {} recordings in {:.0} s", pairs.len(), t.elapsed().as_secs_f64());
-    let scored = score(&pairs);
+    let scored = score(&pairs, &aligner);
     let mut out = scored.json;
     let mut md = report_md(&out);
     if let Some(path) = &against {
@@ -1173,18 +1184,24 @@ fn reference(female: bool, speakers: &BTreeMap<String, Values>) -> Reference {
     Reference { terms, ceps }
 }
 
+/// max(0, gap / unit − 1), or NaN when any of them is missing (`f64::max` would make a missing
+/// measurement a perfect 0).
+fn cost(gap: f64, unit: f64) -> f64 {
+    if gap.is_finite() && unit.is_finite() && unit > 0.0 { (gap / unit - 1.0).max(0.0) } else { f64::NAN }
+}
+
 /// Each term's (value, cost) for one voice against a reference.
 fn costs(v: &Values, r: &Reference) -> BTreeMap<String, (f64, f64)> {
     let mut out = BTreeMap::new();
     for (name, &(c, sd, _)) in &r.terms {
         let x = v.terms.get(name).copied().unwrap_or(f64::NAN);
-        out.insert(name.clone(), (x, ((x - c).abs() / sd - 1.0).max(0.0)));
+        out.insert(name.clone(), (x, cost((x - c).abs(), sd)));
     }
     for (c, (centre, unit)) in &r.ceps {
         let (d, cost) = match v.ceps.get(c) {
             Some(cc) => {
                 let d = mcd(cc, centre);
-                (d, (d / unit - 1.0).max(0.0))
+                (d, cost(d, *unit))
             }
             None => (f64::NAN, f64::NAN),
         };
@@ -1219,9 +1236,12 @@ fn num(v: &Value) -> f64 {
 /// A cheap fingerprint of a file (FNV-1a), so the verdict can tell that two runs used the same
 /// recordings' alignment and the same aligner model.
 fn fingerprint(path: &str) -> String {
-    let b = std::fs::read(path).unwrap_or_default();
+    fingerprint_bytes(&std::fs::read(path).unwrap_or_default())
+}
+
+fn fingerprint_bytes(b: &[u8]) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
-    for x in b {
+    for &x in b {
         h ^= x as u64;
         h = h.wrapping_mul(0x100000001b3);
     }
@@ -1263,7 +1283,7 @@ struct Scored {
 }
 
 /// Score the synth (and each real speaker, left out in turn) against the training speakers.
-fn score(pairs: &[Pair]) -> Scored {
+fn score(pairs: &[Pair], aligner: &str) -> Scored {
     let defs = term_defs();
     let utts = |pred: &dyn Fn(&Pair) -> bool, synth: bool| -> Vec<(&UttMeas, &[Tok])> {
         pairs.iter().filter(|p| pred(p)).map(|p| if synth { (&p.synth.0, &p.synth.1[..]) } else { (&p.human.0, &p.human.1[..]) }).collect()
@@ -1281,7 +1301,9 @@ fn score(pairs: &[Pair]) -> Scored {
         "judge": JUDGE_VERSION,
         "alignment": fingerprint(&repo_path("tools/tsp/alignment.tsv.gz")),
         "model": fingerprint(&format!("{}/.cache/chimera-mfa/mfa/pretrained_models/acoustic/english_us_arpa.zip", std::env::var("HOME").unwrap_or_default())),
+        "aligner": aligner,
         "recordings": pairs.len(),
+        "recording_set": fingerprint_bytes(pairs.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(",").as_bytes()),
     });
     let mut human_json = json!({});
     for (part, held) in [("train", false), ("held", true)] {
@@ -1362,7 +1384,7 @@ enum Verdict {
 /// The verdict on the training score between two runs over the same recordings, by the same
 /// judge. Scored terms only; diagnostics that moved a lot are noted, not counted.
 fn verdict(old: &Value, new: &Value) -> Result<(Verdict, Vec<String>, f64), String> {
-    for k in ["judge", "alignment", "model", "recordings"] {
+    for k in ["judge", "alignment", "model", "aligner", "recording_set"] {
         if old[k] != new[k] {
             return Err(format!("the earlier score has another {k} ({} here, {} there); rescore it with this build over the same speakers", new[k], old[k]));
         }
@@ -1464,6 +1486,21 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_measurement_has_no_cost() {
+        assert!(cost(f64::NAN, 1.0).is_nan());
+        assert!(cost(1.0, f64::NAN).is_nan());
+        assert!(cost(1.0, 0.0).is_nan());
+        assert_eq!(cost(0.5, 1.0), 0.0);
+        assert_eq!(cost(3.0, 1.0), 2.0);
+        // a scored group with no cost leaves no score, rather than a perfect one
+        let mut c = BTreeMap::new();
+        c.insert("level ʃ".to_string(), (f64::NAN, f64::NAN));
+        c.insert("centroid ʃ".to_string(), (1.0, 0.0));
+        c.insert("duration k".to_string(), (1.0, 0.0));
+        assert!(fold(&c).0.is_nan());
+    }
+
+    #[test]
     fn matching_keeps_only_the_same_phones_in_order() {
         // "the sheet" said ðə ʃit by the synth, ði ʃiːt (an inserted t) by a speaker
         let synth: Vec<Phone> = ["ð", "ə", "ʃ", "i", "t"].map(ph).to_vec();
@@ -1512,7 +1549,8 @@ mod tests {
             "judge": JUDGE_VERSION,
             "alignment": "a",
             "model": "m",
-            "recordings": 10,
+            "aligner": "mfa 3.4.3",
+            "recording_set": "r",
             "train": {
                 "score": cost,
                 "female": { "terms": { "level ʃ": term, "F2 u": { "scored": false, "cost": cost, "support": support } } },
@@ -1542,7 +1580,7 @@ mod tests {
         let mut new = scored(0.9, 1000);
         new["train"]["female"]["terms"]["F2 u"]["cost"] = json!(5.0);
         assert_eq!(v(scored(1.0, 1000), new), "better");
-        for k in ["recordings", "judge", "alignment", "model"] {
+        for k in ["recording_set", "judge", "alignment", "model", "aligner"] {
             let mut other = scored(1.0, 1000);
             other[k] = json!(99);
             assert!(verdict(&scored(1.0, 1000), &other).is_err(), "{k}");

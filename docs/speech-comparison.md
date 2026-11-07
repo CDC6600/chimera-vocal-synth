@@ -171,7 +171,9 @@ each other. It is built like the singer judge's ([csd-comparison.md](csd-compari
   Without the floor, a measure every speaker happens to share (no voicing at all in /s/: a
   spread of 0.01) would turn any difference into a large cost.
 - **Cost.** A term's cost is max(0, |synth − centre| / spread − 1). Within one spread of the
-  real speakers costs nothing.
+  real speakers costs nothing. A term with no value has no cost, never a cost of 0. A scored
+  group with no cost leaves the score empty: a run over a few speakers has no centres, so no
+  score.
 - **Spectrum terms (diagnostic).** These are distances. The synth's cepstrum is the mean over
   the speakers' sentence sets, compared with the centre (the mean of the training speakers'
   cepstra), in MCD dB. The unit is the median, over training speakers, of a speaker's distance
@@ -188,7 +190,7 @@ each other. It is built like the singer judge's ([csd-comparison.md](csd-compari
 
 **The verdict.** `--against <earlier score.json>` compares the training scores of two runs. It
 refuses unless both used the same judge version, the same alignment of the recordings, the same
-aligner model and the same recordings. The synth and the aligner are deterministic, so the same
+aligner (MFA's version, its model and `mfa.yaml`) and the same recordings, by ID. The synth and the aligner are deterministic, so the same
 build gives the same score (checked: a second run is identical, and its verdict is NO CLEAR
 CHANGE, +0.000). Only scored terms count:
 

@@ -35,7 +35,8 @@ def header_text(path):
 
 def prepare(tsp, corpus):
     rows = []
-    root = os.path.join(tsp, "48k")
+    # absolute, so the links resolve from each utterance's directory
+    root = os.path.join(os.path.abspath(tsp), "48k")
     for spk in sorted(os.listdir(root)):
         if not re.fullmatch(r"[FM][A-L]", spk):
             continue  # children CA, CB
