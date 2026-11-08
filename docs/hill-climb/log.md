@@ -1449,28 +1449,32 @@ Largest costs first. Costs are the speakers' report, female / male where both.
 5. **Affricates.** Experiment 15's patch (held /ʃ/ constriction until the folds close) can be retried
    on top of a level fix. Duration /dʒ/ 3.2 / 4.2, /tʃ/ 2.3 / 1.7. Experiment 21 found that this is
    also what makes level /tʃ/ (cost 10.7 / 4.1) fragile: the frication lasts 30–40 ms and is followed
-   by 40–50 ms of an [h] about 10 dB quieter, so the term's window (the phone's second half) reads
-   mostly that gap, and a 10–30 ms move of MFA's boundary moves it 3 dB. Do this before chasing the
-   /tʃ/ level.
+   by 40–50 ms of an [h]-like noise about 8 dB quieter, so the term's window (the phone's second half)
+   reads mostly that gap, and a 10–30 ms move of MFA's boundary can move a token 3 dB. Do this before
+   chasing the /tʃ/ level. That noise is oddly broad (top at 10–14 kHz, in the old build too); nobody
+   has found its source.
 6. **Short closures, long nasals.** Duration /k/ 3.4 / 3.6, /z/ 3.4 / 2.2, /ŋ/ 3.4 / 1.8, /n/ 1.1 / 1.9,
    and stressed vowels before sonorants (female 1.5). Note MFA's convention: read the planner and the
    report's numbers together (`phonetics/durations.rs`).
 7. **Weak female bursts.** /k/ 3.3, /t/ 2.9: 9 dB weak. They may move with lead 3.
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
    (2–2.5 kHz, men 2.5–3.5): the excess is its tail, −2 to −8 dB at 5–10 kHz against the men's −3 to
-   −21. See lead 11.
+   −16. See lead 11.
 9. **Still open from batch 2:** the protruded-lip tuck's area jump (ignored test in
    `geometry_continuity`), and the clipped /ɝ/ of "bird" the owner preferred "before" for.
 10. **The /s/ front cavity** (from experiment 21). With no low-pass on the source at all, a held /s/
-    still centres at 6.6 / 6.0 kHz and peaks at 3.5–5 kHz, with 2–3.5 kHz only 5–15 dB down. Women's
-    /s/ is a plateau from 5 to 10 kHz with 2–3 kHz about 16 dB below it. The synth's narrowest section
-    is 2.2 cm (female) and 2.7 cm (male) behind the lips, a quarter wave at 3.9 and 3.2 kHz, and
+    centres at 6.6 / 6.0 kHz. That is the men's (5.7), so the male /s/ is near what its source allows,
+    but 0.8 kHz short of the women's: her plateau starts at 4 kHz where theirs starts at 5. Her
+    narrowest section is 2.2 cm behind the lips (his 2.7), roughly a quarter wave at 3.9 kHz (3.2), and
     the teeth are 2–3 cm² wide. Look at the /s/ geometry: how near its channel's exit sits to the
     teeth, and how far a raised jaw narrows the incisors' gap, against MRI (Narayanan et al. 1995).
+    Running speech also sits about 0.75 kHz below the held sound (female 4.73 against 5.53 at the
+    old band), so check whether a short /s/ reaches its target at all.
 11. **How fast the source falls above its corner** (from experiment 21). Real /s/ and /ʃ/ fall about
-    25 dB/octave above it, the two-pole only 12. A steeper form would pull in the /ʃ/ tail and leave /s/.
+    25 dB/octave or more above it, the two-pole only 12, though the recording chain may share in this
+    above 12 kHz. A steeper form would pull in the /ʃ/ tail and leave /s/.
 12. **The voiced /z/'s jet** (from experiment 21). Its v/D swings 3.3–6.5 kHz with the voicing (12–24
-    m/s, /s/ 30), so it gains little (female 4.0 → 4.2 kHz), where real /z/ sits within 4–10 % of /s/.
+    m/s, /s/ 30), so it gains little (female 4.0 → 4.2 kHz), where real /z/ sits within 5–11 % of /s/.
     The synth voices /z/ throughout (voiced share 0.77 / 0.34 in the men's terms); real /z/ partly
     devoices, which would put more of the pressure across the constriction.
 
@@ -1498,7 +1502,7 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     opening gets a corner of 12–40 kHz, though the teeth are 2 cm downstream, where the jet has mixed.
     A mixing layer grows as δ ≈ 0.17·x (0.12–0.22, Pope 2000 ch. 5, a textbook value from memory, not
     re-read). So δ reaches D about 6 D downstream, where a round jet's core ends, and past it the
-    centreline speed falls as v·D/δ. Steady /s/ and /ʃ/ sit at x/D of 4–6, so they keep v/D.
+    centreline speed falls as v·D/δ. Steady /s/ and /ʃ/ sit at x/D of 5–6, so they keep v/D.
 - Change: `crates/chimera/src/voice/human_airway.rs`, `update_noise`. Per control update, the teeth
   source's low-pass goes to St·v·D/δ², with δ = max(D, 0.17·x) and x the travel from the narrowest
   section to the teeth. The Re² law sets the source's power, so the gain is sqrt(5000 Hz / corner):
@@ -1519,10 +1523,13 @@ Largest costs first. Costs are the speakers' report, female / male where both.
   **Read this table before trusting 1.15.** Across the range the gain is real and steady, −0.10 to
   −0.20. The pass isn't: 1.15 is a narrow window between marginal breaks (M centroid tʃ +0.49 here).
   The value is within "of order 1" and near the rough reading above, but I took it because it passes.
-  - F level tʃ's break is the aligner, not the sound. It reads −26.6 dB under every form, with a paired
-    median change over its 95 tokens of 0.01 dB. MFA moves the /z/-to-/tʃ/ boundary in "wise chief"
-    and "days a chicken" by 10–30 ms when the /z/ brightens, and that speaker's median moves.
-  - F level g has no teeth source in its closure; also the aligner.
+  - F level tʃ's break looks like the aligner, not the sound. It reads −26.6 dB under five of the seven
+    forms, whatever their source level, and the paired median change over its 95 tokens is 0.01 dB (St 1,
+    power held). MFA moves the /z/-to-/tʃ/ boundary in "wise chief" and "days a chicken" by 10–30 ms
+    when the /z/ brightens, and those speakers' medians move. My proxy for the term, without the
+    judge's floor subtraction, moves only −0.14 dB where the judge moves −0.81, so this isn't fully
+    reproduced.
+  - F level g: presumably the aligner too, since a closure holds no teeth source. Not checked.
   - M centroid tʃ's rise is real but small, and the at-the-teeth form halved it.
 - Speakers: 1.583 → **1.409** (training, BETTER), 1.706 → 1.536 (held-out). Female 2.194 → 1.952, male
   0.971 → 0.866.
@@ -1536,12 +1543,14 @@ Largest costs first. Costs are the speakers' report, female / male where both.
   - The summary line of the first judge run showed a held-out score. I filtered it after that, and read
     the held-out score above only once the value was chosen.
 - Whisper: 36.75 → 39.07 % (training, NO CLEAR CHANGE; the limit is +3), 44.33 → 44.67 % (held-out).
-  "Rice … round bowls" improved in one voice (4 → 0), and "the box was thrown" in both. "The wet bird
-  pushes" 0 → 3, "a chicken leg" 2 → 5 and "some bright doors" 3 → 5 worsened. It leans the wrong way,
-  within the noise experiment 20 measured. The female "sheet" is still "feet".
+  "Rice … round bowls" went 4 → 0 in one voice and 4 → 5 in the other; "the box was thrown" improved
+  in both. "The wet bird pushes" 0 → 3, "a chicken leg" 2 → 5 and "some bright doors" 3 → 5 worsened. It
+  leans the wrong way, at the edge of the ±2 points experiment 20 measured as noise. The female "sheet"
+  is still "feet".
 - Singer: training 0.587 → 0.586 (NO CLEAR CHANGE), held-out 0.811 → 0.810. Guards hold: 0 notes off
   time, 0 dropped gestures, note MCD 8.614 → 8.620 dB (guard 8.714), envelope correlation 0.811, pitch
-  error 4.84 cents. Holding the power is why, where experiment 13's doubled gain cost 0.108 dB.
+  error 4.84 cents. Holding the power is the likely reason, where experiment 13's doubled gain cost
+  0.108 dB; the density-held form didn't go through the singer.
 - Speed: `os=2` back to back at load average about 20: 32.0 / 22.8 / 31.3 % before, 32.1 / 20.5 / 33.9 %
   after. The same within the noise; `bench.txt` reads 31.9 %, against the baseline's 24.7 % read at load
   11.
