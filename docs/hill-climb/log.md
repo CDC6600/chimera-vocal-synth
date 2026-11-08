@@ -1446,16 +1446,16 @@ Largest costs first. Costs are the speakers' report, female / male where both.
 4. **How turbulence scales.** The sources follow Re² ∝ ΔP·A; Stevens' scaling, ΔP^1.5·A^0.5, lifts
    narrow jets and small bodies (experiment 13's "Next"). Possibly the rest of the female gap, and the
    male /ʃ tʃ/ (2.5, 4.3).
-5. **Affricates.** Experiment 15's patch (held /ʃ/ constriction until the folds close) can be retried
-   on top of a level fix. Duration /dʒ/ 3.2 / 4.2, /tʃ/ 2.3 / 1.7. Experiment 21 found that this is
-   also what makes level /tʃ/ (cost 10.7 / 4.1) fragile: the frication lasts 30–40 ms and is followed
-   by 40–50 ms of an [h]-like noise about 8 dB quieter, so the term's window (the phone's second half)
-   reads mostly that gap, and a 10–30 ms move of MFA's boundary can move a token 3 dB. Do this before
-   chasing the /tʃ/ level. That noise is oddly broad (top at 10–14 kHz, in the old build too); nobody
-   has found its source.
+5. **Affricates.** /tʃ/ closed by experiment 22: a closure and 60 ms of frication, voicing as it ends, and
+   level /tʃ/ now reads frication (cost 9.2 / 1.9, the same gap as /ʃ/, lead 3). /dʒ/ is open: its folds
+   stay together, so it has no frication and MFA reads it as a closure (duration 3.0 / 2.8). The fix is
+   measured and logged in experiment 22, at −0.09 of score, and level /dʒ/ blocked it. Retry it first:
+   that term's limit moved with the kept run. The [h]'s broad noise (top at 10–14 kHz) is gone from /tʃ/;
+   nobody has found its source, and stops may still have it.
 6. **Short closures, long nasals.** Duration /k/ 3.4 / 3.6, /z/ 3.4 / 2.2, /ŋ/ 3.4 / 1.8, /n/ 1.1 / 1.9,
    and stressed vowels before sonorants (female 1.5). Note MFA's convention: read the planner and the
-   report's numbers together (`phonetics/durations.rs`).
+   report's numbers together (`phonetics/durations.rs`). Experiment 22: MFA gives 20–40 % of the synth's
+   stop closures to silence, 2–3 % of the speakers', so measure that before lengthening a closure.
 7. **Weak female bursts.** /k/ 3.3, /t/ 2.9: 9 dB weak. They may move with lead 3.
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
    (2–2.5 kHz, men 2.5–3.5): the excess is its tail, −2 to −8 dB at 5–10 kHz against the men's −3 to
@@ -1565,3 +1565,131 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     0.01 of room here.
   - The /s/ front cavity (lead 10) is what is left of the centroids. Levels are untouched by design:
     female /ʃ/ is still 16 dB quiet, so leads 3 and 4 remain.
+
+### 22. A voiceless affricate's span holds its closure and frication, with no [h] after it (kept)
+
+- Hypothesis (batch 3's lead 5): the synth's /tʃ/ isn't an affricate. Measured against the real ones (my
+  own script over the training tokens: 10 ms frames, 5 ms hop, frication = the longest run within 10 dB of
+  the token's 2–10 kHz peak; MFA's phones for both):
+
+  | median, female / male | speakers | synth before |
+  |---|---|---|
+  | /tʃ/ phone | 140 / 140 ms (125–130 before a vowel) | 90 / 100 |
+  | closure, phone start to frication | 60 / 50 | 5 / 15 |
+  | frication | 65 / 60 | 40 / 45, then the [h] |
+  | /dʒ/ phone | 110 / 100 (90 before a vowel) | 40 / 40 (MFA's 30 ms floor before a vowel) |
+  | /dʒ/ closure, frication | 55 / 45, 45 / 45 | none readable |
+
+  - **One real token.** FA01_04, "a chicken": closure 60 ms, frication 70 ms (rising to −22 dB, peak
+    3.6–4.1 kHz), voice within 10 ms of its end, /ɪ/ 50–60 ms.
+  - **The causes in the plan.** The release gesture was built with the affricate's definition, a closing
+    one: it took a contact release's 20 ms lead off its end, and left the jaw, which the fricative's own
+    definition owns, to a weak gesture. Klatt's 70 ms can't hold both parts: his /t/ alone is 75. The
+    closure got about 25 ms, the frication about 40, and the folds stayed apart 40 ms past the span, so
+    an [h] followed.
+  - **Source.** The TSP speakers above for every value. Real /tʃ/ as a closure and then 50–80 ms of
+    frication louder than its burst is Stevens 1998 and Kent & Read, as the lead cites them. I didn't read
+    either, and a web search found no millisecond values for English.
+- Change: `crates/chimera/src/phonetics/planner.rs`, `durations.rs`, and a test.
+  - The release is the fricative's own gesture (`rel`, not `def`), handing over from the closure where it
+    did and held to `t1`.
+  - /tʃ/ is (125, 88) ms: the speakers' phone, with Klatt's ratio of minimum to inherent. 45 % of the span
+    is closure (55 ms of 125).
+  - The folds open from 15 % of the span, at 0.36 in every context, and are closed by `t1`
+    (`t1 − 0.03`, ramp 30 ms). So voicing starts as the frication ends, and the vowel keeps its planned
+    length.
+  - Songs bring their own durations, so there the table doesn't apply, the rest does.
+  - Values tried, speakers' training score from 1.409:
+
+  | form | score | verdict |
+  |---|---|---|
+  | A: experiment 15's patch as logged (to `t1 + 0.4·VOT`, +20 ms vowel allowance) | 1.391 | WORSE: F centroid tʃ +1.04 |
+  | B: A, the release as the fricative's own gesture | 1.364 | WORSE: F centroid tʃ +0.62 |
+  | C: B, /tʃ/ (100, 70) | 1.345 | BETTER; Whisper 38.74 % |
+  | C, /dʒ/ (90, 60) | 1.347 | BETTER, but /dʒ/ still reads 0.47 of a phone |
+  | C, /dʒ/ (90, 60), its folds at 0.22 from the split to `t1` | 1.260 | WORSE: level dʒ F +1.39, M +0.51 |
+  | the same at 0.15 | 1.270 | WORSE: level dʒ F +1.19, M +0.95 |
+  | the same at 0.10 | 1.280 | WORSE: level dʒ F +0.66 |
+  | the same at 0.08 | 1.281 | WORSE: level dʒ F +0.86 |
+  | the same at 0.22 / 0.15 / 0.10, closing 20 ms before `t1` | 1.266 / 1.270 / 1.295 | WORSE: level dʒ F +1.16 / +1.02 / +0.81, M +0.59 / +0.63; at 0.10 M centroid dʒ +0.65 |
+  | D: nothing past `t1`, /tʃ/ (120, 85) | 1.352 | WORSE: F duration tʃ +0.61 |
+  | **D, /tʃ/ (125, 88)** | **1.369** | **BETTER; Whisper 36.09 %** |
+  | D, /tʃ/ (130, 90) | 1.370 | WORSE: F level g +0.58; Whisper 36.75 % |
+
+  **Read this before trusting the choice.**
+  - C scores better than what I kept (1.345 against 1.369). I kept D for what it does, not its score. C's
+    frication still spills 40 ms into the vowel, which is what its duration term gets paid for, and it needs
+    experiment 15's +20 ms. The male "chicken" still loses its /ɪ/ under it ("These taste like a rare dish")
+    and "chain" stays "thing". D needs neither the allowance nor the VOT helpers, and Whisper hears both words.
+  - 125 is a pass between marginal breaks, like experiment 21's St. 120 misses by 0.11 on a real term, and
+    130 by 0.08 on female /g/, presumably the aligner, since only sentences with an affricate render
+    differently (not checked). The value is within the speakers' 125–140, and I took it because it passes.
+- Result in the renders: /ˈɑtʃɑ/ had 40 ms of frication and then 50 ms to the voice; it now has 60 ms and
+  10 ms. The female "chicken": closure 50 ms, frication 60 ms, voice reaching −20 dB within 20 ms, /ɪ/ 50 ms.
+  That is the real token's timing, at −19 dB re her vowel where FA01_04 has −5, and with its peak at
+  2.2–2.4 kHz where hers is 3.6–4.1. MFA still fails on that female token, putting /tʃ ɪ k/ on the /k/'s
+  release; the male token now aligns.
+- Speakers: 1.409 → **1.369** (training, BETTER), 1.536 → 1.488 (held-out). Female 1.952 → 1.953, male
+  0.866 → 0.786.
+  - Groups, female: level 1.79 → 1.75, sibilants 3.09 → 3.16, timing 0.97 → 0.95, spectrum 1.33 → 1.30.
+    Male: level 0.69 → 0.62, sibilants 1.06 → 0.90, timing 0.85 → 0.84, spectrum 1.63 → 1.59. Voicing
+    +0.01 in both; formants, voice and intonation unchanged.
+  - Down: level /tʃ/ 10.73 → 9.21 (−26.4 → −24.1 dB), 4.11 → 1.85 (−18.5 → −15.1); male centroid /tʃ/
+    0.79 → 0.00; duration /dʒ/ 3.29 → 2.99, 4.26 → 2.83; spectrum /tʃ/ 3.02 → 2.24, 2.67 → 1.62; duration
+    of a final stressed vowel, female 0.73 → 0.30.
+  - Up: female centroid /tʃ/ 0.36 → 0.73 (3.55 → 3.44 kHz; women 4.01), level /dʒ/ 1.77 → 1.97, 0.00 →
+    0.18; duration /tʃ/ male 1.66 → 1.98; duration /p/ male 0.88 → 1.22; duration /v/ male 0.63 → 0.92.
+    Diagnostic voiced /tʃ/ 0.02 → 0.34, 0.54 → 0.67.
+  - **What the moves mean.** The female centroid was flattered by the [h]'s broad noise: it now reads her
+    /ʃ/, 3.41 kHz. Level /tʃ/ now sits with /ʃ/ (−22.9, −14.7) and holds across the forms: −23.7 to −24.2
+    at D's three spans, so it no longer rides on MFA's boundary as experiment 21 found. Duration /tʃ/
+    barely moves because the old reading included the [h], and MFA gives 23 % of these closures to silence
+    (below). The score's female half doesn't move: her level gain is cancelled by that centroid, in a group
+    of five terms.
+- Whisper: **39.07 → 36.09 %** against the best run (36.75 at the baseline, NO CLEAR CHANGE; the guard had
+  0.68 of room), 44.67 → 42.67 % held-out. Eight sentences moved, every one with an affricate. Those without
+  one render identically and Whisper repeats itself on them. Words: "chicken leg" male −4, female −1, both now
+  "These days, chicken leg is a rare dish"; "black chain" −1 in both, now heard; "chopped" male −2; "juice"
+  male −1; "birch" male −1. Worse: "green chair" male +2 ("The Grinch is ordering…"). Still wrong: female
+  "juice" ("dose"), "chopped" ("fetch-lapped"), "chair" ("children"), and "birch" ("bird") in both.
+- Singer: 0.586 → 0.580 (baseline 0.587, NO CLEAR CHANGE), held-out 0.810 → 0.798. Guards hold: 0 notes off
+  time, 0 dropped gestures, note MCD 8.620 dB (guard 8.714), envelope correlation 0.811, pitch error 4.84
+  cents.
+- Speed: `os=2` 18.6 % at load average 9 (baseline 24.7 %, read at 11; best 31.9 %, read at 20).
+- Tests: fixtures blessed twice; `cargo test --workspace` 113 pass, 2 ignored, including
+  `consonant_artifacts`; `bun run test` 30 pass; `bun run typecheck` clean. Fixtures restored. New:
+  `crates/chimera/tests/affricates.rs`, which fails on the previous engine (male frication 40 ms, 50 ms to
+  the voice) and reads 60 and 10 in both voices now. Nobody has listened to it.
+- Commit: 34f49c6.
+- **/dʒ/, why it lasts half what speakers give it, and why it isn't fixed here:**
+  - **The plan** gives it Klatt's 50 ms where the speakers' phone is 90–110, but that isn't what MFA is
+    reading. At (90, 60) with the folds together it still reads 0.47 / 0.49 of a phone: voicing runs through
+    a release with no audible frication, and MFA calls that the vowel. With the folds apart for the
+    frication the same span reads 1.07 / 1.09 (costs 3.29 / 4.26 → 0.00 / 0.27), and its centroid falls too
+    (female 3.17 → 1.23). So its length is a voicing fault first.
+  - **The speakers' folds part.** Through the phone's five fifths, dB re the stressed vowels, female / male,
+    below 1.2 kHz: −23 −32 −38 −33 −25 / −20 −27 −32 −33 −20, and 2–10 kHz: −50 −30 −13 −10 −18 / −49 −32 −18
+    −12 −21. Voicing fades in the closure, the frication is as loud as /tʃ/'s (level −10.2 / −10.5 against
+    −8.8 / −10.9), and voicing returns before it ends. The voiced share of its middle is 0.21 / 0.29, where
+    the synth's is 0.49 / 0.47. At 0.15, closing 20 ms early, the synth's fifths come out −28 −33 −34 −35 −29
+    / −22 −27 −27 −27 −21 below 1.2 kHz, voiced share 0.19 / 0.20. That is the same shape, with the frication
+    as far below the speakers' as /ʃ/ is.
+  - **What blocks it.** Level /dʒ/ read the vowel's edge (−20.0 / −13.3 dB). With real frication it reads
+    −24 to −25 / −16 to −17, at the /ʃ/ gap. So the fix breaks a term that was right for the wrong reason.
+  - **The retry.** `durations.rs`: `"dʒ" => (90.0, 60.0)`. `planner.rs`, after the voiced fricative's branch:
+    `else if def.manner == Manner::Affricate { gestures.push(Gesture::new(t0 + dur * AFFRICATE_CLOSURE, t1 -
+    0.02, 0.035, 0.02, 6.0, one(ControlKey::ABDUCTION, 0.15)).label("voiced affricate")); }`. Those rows used
+    a 55 % closure and form C's /tʃ/. The kept run moved the limit: a break is now below −22.5 dB (female)
+    and −16.5 dB (male). The 0.10 row read −22.35 / −15.33 with the folds held to `t1`, so that may pass now,
+    but its duration costs are 1.47 / 1.72 and its voiced share 0.30 / 0.33. A lift in the fricative level
+    (leads 3, 4) would allow the better form.
+- Next:
+  - **Retry /dʒ/** as above, in its own experiment. It should be worth about −0.09.
+  - **MFA gives the synth's closures to silence.** A silence comes before the synth's /p/ 40 % of the time,
+    /b/ 34 %, /k/ 30 %, /g/ 24 %, /tʃ/ 23 %, /t/ 20 %, and the speakers' only 2–3 % (/b/ 9 %). The synth's
+    closures are near digital silence (−68 dB, FA01_04's −55). Its stop then reads as its release alone,
+    which may be much of duration /k/'s cost (2.6–3.7, and it swings by 0.5–1 between runs that don't touch
+    /k/). Lengthening a closure wouldn't move it. I measured the share, not the cause: count those tokens
+    apart before acting on lead 6.
+  - **St** (experiment 21) can be reread: level /tʃ/ no longer trips, and male centroid /tʃ/ has room.
+  - **Female /tʃ/ and /ʃ/ are 15–16 dB quiet and peak low** (2.2–2.4 kHz, a real token 3.6–4.1): leads 3, 4.
