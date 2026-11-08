@@ -65,20 +65,47 @@ about_reaper_open() {
   osascript -e 'tell application "System Events" to tell process "REAPER" to get name of every window' 2>/dev/null | grep -q 'About REAPER'
 }
 
-# REAPER's nag covers the window until its countdown lets dialogs() answer it
+# An evaluation copy's nag comes up about half a minute in, and covers everything until its countdown
+# lets dialogs() answer it.
 wait_for_nag() {
-  local i answered
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    about_reaper_open || return 0
+  local i answered seen=0
+  for i in $(seq 1 90); do
     answered=$(dialogs)
     [ -z "$answered" ] || echo "answered $answered"
+    if about_reaper_open; then
+      seen=1
+    elif [ "$seen" = 1 ]; then
+      return 0
+    fi
     sleep 1
   done
+  echo "::warning::REAPER's nag didn't come and go"
+}
+
+# a close-up, with the pointer in it
+closeup() { # name x y w h
+  screencapture -x -C -R"$2,$3,$4,$5" "$out/$1.png" || return 0
+  sips -Z 500 -s format jpeg -s formatOptions 70 "$out/$1.png" --out "$out/$1.jpg" >/dev/null
+  echo "=== screenshot $1 begin"
+  base64 -b 200 -i "$out/$1.jpg"
+  echo "=== screenshot $1 end"
+}
+
+# Where does a drag near the corner go? REAPER may take it for its own window.
+try_grip() { # format, inset x, inset y
+  local x y w h gx gy
+  read -r x y w h <<<"$(bounds)" || true
+  gx=$((x + w - $2))
+  gy=$((y + h - $3))
+  cliclick "m:$gx,$gy" w:400
+  closeup "hover-$1-$2-$3" $((x + w - 60)) $((y + h - 60)) 60 60
+  cliclick "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
+  sleep 2
+  echo "$1 drag from inset $2,$3: $x $y $w $h to $(bounds)"
 }
 
 editor() { # format
   local fmt=$1 x y w h view_h zoom tab_x tab_y gx gy
-  wait_for_nag
   osascript -e 'tell application "System Events" to tell process "REAPER" to set frontmost to true' 2>&1 || true
   shot "$fmt-open"
   read -r x y w h <<<"$(bounds)" || true
@@ -97,6 +124,14 @@ editor() { # format
   cliclick "c:$tab_x,$tab_y"
   sleep 3
   shot "$fmt-beatbox"
+  if [ "$fmt" = CLAP ]; then
+    # a drag in the middle of the page first, then ones further and further from the corner
+    try_grip "$fmt" $((w / 2)) $((view_h / 2))
+    try_grip "$fmt" 16 16
+    try_grip "$fmt" 18 8
+    try_grip "$fmt" 8 18
+    return 0
+  fi
   # inside the grip, and clear of the host window's own resize corner
   gx=$((x + w - 12))
   gy=$((y + h - 12))
@@ -163,6 +198,7 @@ run_reaper() { # formats
       step=${marker##*/at-}
       rm "$marker"
       case "$step" in
+        ready) wait_for_nag ;;
         editor-*) editor "${step#editor-}" ;;
         shot-*) shot "${step#shot-}" ;;
       esac

@@ -147,6 +147,28 @@ local function pdc(tr, fx)
   return tonumber(value) or -1
 end
 
+-- Waits let the editor load and draw, so this runs as a coroutine, resumed from the host's loop.
+local function sleep(seconds)
+  local until_ = reaper.time_precise() + seconds
+  while reaper.time_precise() < until_ do coroutine.yield() end
+end
+
+-- Hand over to the script that started REAPER, which removes the marker when it's done.
+local function ask(step)
+  touch("at-" .. step)
+  local go = OUT .. "/go-" .. step
+  local deadline = reaper.time_precise() + 120
+  while reaper.time_precise() < deadline do
+    local f = io.open(go)
+    if f then
+      f:close()
+      return true
+    end
+    coroutine.yield()
+  end
+  return false
+end
+
 -- Each case: a fresh instance with these settings and notes, rendered. check.ts knows what each
 -- should sound like.
 local KICK = '{\\"id\\":\\"B\\"}'
@@ -187,33 +209,13 @@ local function run_case(format, case)
   end
   local good, err = pcall(function()
     for _, patch in ipairs(case.patches or {}) do patch_settings(tr, fx, format, patch) end
+    -- a new latency restarts a VST3, a moment later: not while it renders
+    if case.patches then sleep(1.5) end
     add_notes(tr, case.notes, case.seconds)
     render(format .. "-" .. case.name, case.seconds)
   end)
   record({ format = format, case = case.name, fx_name = name, pdc = pdc(tr, fx), error = good and "" or tostring(err) })
   reaper.DeleteTrack(tr)
-end
-
--- Waits let the editor load and draw, so this runs as a coroutine, resumed from the host's loop.
-local function sleep(seconds)
-  local until_ = reaper.time_precise() + seconds
-  while reaper.time_precise() < until_ do coroutine.yield() end
-end
-
--- Hand over to the script that started REAPER, which removes the marker when it's done.
-local function ask(step)
-  touch("at-" .. step)
-  local go = OUT .. "/go-" .. step
-  local deadline = reaper.time_precise() + 60
-  while reaper.time_precise() < deadline do
-    local f = io.open(go)
-    if f then
-      f:close()
-      return true
-    end
-    coroutine.yield()
-  end
-  return false
 end
 
 local function state_of(tr, fx, format)
@@ -261,6 +263,8 @@ local function editor(format)
 end
 
 local function main()
+  -- not under a dialog of REAPER's: rendering does nothing there
+  ask("ready")
   reaper.GetSetProjectInfo(0, "PROJECT_SRATE", FS, true)
   reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true)
   reaper.SetCurrentBPM(0, BPM, false)

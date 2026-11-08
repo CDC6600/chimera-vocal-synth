@@ -230,7 +230,12 @@ for (const r of records) {
   const beat = r.case === "beatbox" || r.case === "pads" || r.case === "clicked";
   const expected = beat ? RATES.map((fs) => BEAT_LATENCY * fs) : [0];
   check(`${name} reports its delay`, expected.some((e) => Math.abs(Number(r.pdc) - e) <= 1), `${r.pdc} samples, loaded as "${r.fx_name}"`);
-  const wav = readWav(`${folder}/${r.format}-${r.case}.wav`);
+  const file = `${folder}/${r.format}-${r.case}.wav`;
+  if (!existsSync(file)) {
+    check(`${name} rendered`, false, "no file");
+    continue;
+  }
+  const wav = readWav(file);
   judge[r.case as string](name, wav);
   // every format is the same binary, so it should render the same sound
   const first = firstOfCase[r.case as string] ??= { format: String(r.format), wav };

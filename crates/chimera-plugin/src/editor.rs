@@ -6,9 +6,11 @@
 //! - Commands go the other way through `window.ipc.postMessage` (JSON).
 //! - Both handlers run on the host's main thread.
 
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::ptr::{NonNull, null_mut};
+use std::ptr::{NonNull, null, null_mut};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +18,7 @@ use nih_plug::prelude::*;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{class, msg_send};
-use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{CGPoint, CGRect};
 use raw_window_handle::{AppKitWindowHandle, HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
 use wry::dpi::{LogicalPosition, LogicalSize};
 use wry::http::{Request, Response};
@@ -189,86 +191,55 @@ impl ParamHost for WindowHost {
     }
 }
 
-/// The open editor. Dropped (on the main thread) when the host closes the window; wry then removes
-/// the webview from the host's view.
-struct Open {
+// CoreFoundation's run loop timer. A view of ours watching for its window would need a class of ours,
+// and bundles of one binary in one process can't all register the same class name.
+#[repr(C)]
+struct CFRunLoopTimerContext {
+    version: isize,
+    info: *mut c_void,
+    retain: *const c_void,
+    release: *const c_void,
+    copy_description: *const c_void,
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    static kCFRunLoopCommonModes: *const c_void;
+    fn CFAbsoluteTimeGetCurrent() -> f64;
+    fn CFRunLoopGetMain() -> *mut c_void;
+    fn CFRunLoopTimerCreate(allocator: *const c_void, fire_date: f64, interval: f64, flags: usize, order: isize, callout: extern "C" fn(*mut c_void, *mut c_void), context: *mut CFRunLoopTimerContext) -> *mut c_void;
+    fn CFRunLoopAddTimer(run_loop: *mut c_void, timer: *mut c_void, mode: *const c_void);
+    fn CFRunLoopTimerInvalidate(timer: *mut c_void);
+    fn CFRelease(object: *const c_void);
+}
+
+/// How often to look for the host's window (seconds).
+const WINDOW_POLL: f64 = 0.05;
+
+/// What the webview is built from.
+struct Building {
+    view: NonNull<c_void>,
+    size: (u32, u32),
     bridge: Arc<Bridge>,
-    _webview: WebView,
-    /// what the webview sits in when the host's view had no window to build it in
-    holder: Option<Retained<AnyObject>>,
+    webview_ptr: Arc<AtomicPtr<AnyObject>>,
 }
 
-/// An empty view inside a window of its own, for building the webview in. wry panics without a
-/// window (`ns_view.window().unwrap()`), and clap-wrapper's AU hands over its view before the host has
-/// put that in one, in `uiViewForAudioUnit`. wry only needs the window while building, so the view
-/// holding the webview moves across afterwards. It can't be the AU's view that goes in the window:
-/// clap-wrapper closes the editor when that view leaves one.
-struct Holder {
-    view: Retained<AnyObject>,
-    _window: Retained<AnyObject>,
-}
-
-impl Holder {
-    fn new((width, height): (u32, u32)) -> Self {
-        let frame = CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: width as f64, height: height as f64 } };
-        // SAFETY: AppKit classes, on the main thread `spawn` runs on, and these methods take these types
-        unsafe {
-            let window: Retained<AnyObject> = msg_send![class!(NSWindow), new];
-            let view: Retained<AnyObject> = msg_send![class!(NSView), new];
-            let _: () = msg_send![&*view, setFrame: frame];
-            let content: *const AnyObject = msg_send![&*window, contentView];
-            let _: () = msg_send![content, addSubview: &*view];
-            Holder { view, _window: window }
-        }
+impl Building {
+    fn in_window(&self) -> bool {
+        // SAFETY: an NSView, alive while the editor is open, and `window` returns an NSWindow or nil
+        let window: *const AnyObject = unsafe { msg_send![self.view.as_ptr() as *const AnyObject, window] };
+        !window.is_null()
     }
 
-    /// Into the host's view, following its size from now on.
-    fn move_into(self, host_view: NonNull<c_void>) -> Retained<AnyObject> {
-        // SAFETY: as above, and the host's view is alive while the editor is open
-        unsafe {
-            let _: () = msg_send![&*self.view, removeFromSuperview];
-            let _: () = msg_send![&*self.view, setAutoresizingMask: FOLLOW_SUPERVIEW];
-            let _: () = msg_send![host_view.as_ptr() as *const AnyObject, addSubview: &*self.view];
-        }
-        self.view
-    }
-}
-
-// SAFETY: nih-plug creates and drops the editor handle on the GUI thread only.
-unsafe impl Send for Open {}
-
-impl Drop for Open {
-    fn drop(&mut self) {
-        self.bridge.close();
-        if let Some(holder) = &self.holder {
-            // SAFETY: a view of ours, on the main thread
-            let _: () = unsafe { msg_send![&**holder, removeFromSuperview] };
-        }
-    }
-}
-
-impl Editor for WebEditor {
-    fn spawn(&self, parent: ParentWindowHandle, context: Arc<dyn GuiContext>) -> Box<dyn std::any::Any + Send> {
-        let ParentWindowHandle::AppKitNsView(view) = parent else { return Box::new(()) };
-        let Some(view) = NonNull::new(view) else { return Box::new(()) };
-
-        let size @ (width, height) = self.size();
-        let webview_ptr = Arc::new(AtomicPtr::new(null_mut()));
-        let host = WindowHost { host: GuiHost::new(self.params.clone(), context), params: self.params.clone(), view, webview: webview_ptr.clone(), drag: Mutex::new(None), zoomed_for: Mutex::new(size), settling: Mutex::new(0) };
-        let bridge = Arc::new(Bridge::new(self.params.clone(), self.shared.clone(), Box::new(host)));
-
-        let serving = bridge.clone();
+    fn build(&self) -> Option<WebView> {
+        let (width, height) = self.size;
+        let serving = self.bridge.clone();
         let protocol = move |_id: wry::WebViewId, req: Request<Vec<u8>>| {
             let reply = serving.request(req.uri().path());
             Response::builder().status(reply.status).header("Content-Type", reply.mime).header("Cache-Control", "no-store").body(reply.body).unwrap()
         };
-        let commands = bridge.clone();
+        let commands = self.bridge.clone();
         let ipc = move |req: Request<String>| commands.command(req.body());
-
-        // SAFETY: an NSView, and `window` returns an NSWindow or nil
-        let window: *const AnyObject = unsafe { msg_send![view.as_ptr() as *const AnyObject, window] };
-        let holder = window.is_null().then(|| Holder::new(size));
-        let parent = holder.as_ref().map_or(view, |h| NonNull::new(Retained::as_ptr(&h.view) as *mut c_void).expect("a view"));
 
         // a panic in here would take the host down with it: an empty window is better
         let built = catch_unwind(AssertUnwindSafe(|| {
@@ -282,7 +253,7 @@ impl Editor for WebEditor {
                 .with_accept_first_mouse(true)
                 .with_devtools(true)
                 .with_url("chimera://localhost/")
-                .build_as_child(&HostView(parent))
+                .build_as_child(&HostView(self.view))
         }));
         match built {
             Ok(Ok(webview)) => {
@@ -290,20 +261,93 @@ impl Editor for WebEditor {
                 let wk = webview.webview();
                 // SAFETY: `setAutoresizingMask:` takes an NSUInteger, on the main thread we're on
                 let _: () = unsafe { msg_send![&*wk, setAutoresizingMask: FOLLOW_SUPERVIEW] };
-                webview_ptr.store(Retained::as_ptr(&wk) as *mut AnyObject, Ordering::Relaxed);
-                let _ = webview.zoom(page_zoom(size));
-                let holder = holder.map(|h| h.move_into(view));
-                Box::new(Open { bridge, _webview: webview, holder })
+                self.webview_ptr.store(Retained::as_ptr(&wk) as *mut AnyObject, Ordering::Relaxed);
+                let _ = webview.zoom(page_zoom(self.size));
+                Some(webview)
             }
             Ok(Err(err)) => {
                 nih_error!("CHIMERA: could not create the webview: {err}");
-                Box::new(())
+                None
             }
             Err(_) => {
                 nih_error!("CHIMERA: creating the webview panicked");
-                Box::new(())
+                None
             }
         }
+    }
+}
+
+/// Waiting for the host to put its view in a window. wry panics without one
+/// (`ns_view.window().unwrap()`), and clap-wrapper's AU hands over its view before the host has done
+/// that, in `uiViewForAudioUnit`. Building in a temporary window and moving across doesn't work: the
+/// webview never draws in the window it's moved to.
+struct Waiting {
+    building: Building,
+    webview: Rc<RefCell<Option<WebView>>>,
+    timer: Cell<*mut c_void>,
+}
+
+extern "C" fn look_for_window(_timer: *mut c_void, info: *mut c_void) {
+    // SAFETY: `info` is the `Waiting` the `Open` owns, which invalidates this timer before dropping it
+    let waiting = unsafe { &*(info as *const Waiting) };
+    if waiting.building.in_window() {
+        // SAFETY: a timer of ours, on the run loop it's on
+        unsafe { CFRunLoopTimerInvalidate(waiting.timer.get()) };
+        *waiting.webview.borrow_mut() = waiting.building.build();
+    }
+}
+
+/// The open editor. Dropped (on the main thread) when the host closes the window; wry then removes
+/// the webview from the host's view.
+struct Open {
+    bridge: Arc<Bridge>,
+    _webview: Rc<RefCell<Option<WebView>>>,
+    waiting: Option<Box<Waiting>>,
+}
+
+// SAFETY: nih-plug creates and drops the editor handle on the GUI thread only.
+unsafe impl Send for Open {}
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        self.bridge.close();
+        if let Some(waiting) = &self.waiting {
+            // SAFETY: a timer of ours, on the main thread, and no use of it after this
+            unsafe {
+                CFRunLoopTimerInvalidate(waiting.timer.get());
+                CFRelease(waiting.timer.get());
+            }
+        }
+    }
+}
+
+impl Editor for WebEditor {
+    fn spawn(&self, parent: ParentWindowHandle, context: Arc<dyn GuiContext>) -> Box<dyn std::any::Any + Send> {
+        let ParentWindowHandle::AppKitNsView(view) = parent else { return Box::new(()) };
+        let Some(view) = NonNull::new(view) else { return Box::new(()) };
+
+        let size = self.size();
+        let webview_ptr = Arc::new(AtomicPtr::new(null_mut()));
+        let host = WindowHost { host: GuiHost::new(self.params.clone(), context), params: self.params.clone(), view, webview: webview_ptr.clone(), drag: Mutex::new(None), zoomed_for: Mutex::new(size), settling: Mutex::new(0) };
+        let bridge = Arc::new(Bridge::new(self.params.clone(), self.shared.clone(), Box::new(host)));
+
+        let building = Building { view, size, bridge: bridge.clone(), webview_ptr };
+        let webview = Rc::new(RefCell::new(None));
+        if building.in_window() {
+            *webview.borrow_mut() = building.build();
+            return Box::new(Open { bridge, _webview: webview, waiting: None });
+        }
+
+        let waiting = Box::new(Waiting { building, webview: webview.clone(), timer: Cell::new(null_mut()) });
+        let mut timer_context = CFRunLoopTimerContext { version: 0, info: &*waiting as *const Waiting as *mut c_void, retain: null(), release: null(), copy_description: null() };
+        // SAFETY: the context is copied, and its `info` lives in the box the `Open` owns, whose drop
+        // invalidates the timer
+        unsafe {
+            let timer = CFRunLoopTimerCreate(null(), CFAbsoluteTimeGetCurrent() + WINDOW_POLL, WINDOW_POLL, 0, 0, look_for_window, &mut timer_context);
+            waiting.timer.set(timer);
+            CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
+        }
+        Box::new(Open { bridge, _webview: webview, waiting: Some(waiting) })
     }
 
     fn size(&self) -> (u32, u32) {
