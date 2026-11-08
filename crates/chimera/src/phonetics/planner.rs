@@ -283,11 +283,13 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
                 }
             }
             Manner::Affricate => {
-                let split = t0 + dur * 0.55;
+                let split = t0 + dur * AFFRICATE_CLOSURE;
                 add_oral(&def.targets, t0, split, 2.0, def.ipa);
-                let rel = def.release.and_then(|r| phoneme(r, body));
-                if let Some(rel) = rel {
-                    add_oral(&rel.targets, split + 0.008, t1, 1.4, def.ipa);
+                // the release is the fricative's own gesture, not a contact release's: it takes
+                // the fricative's articulators (the jaw too) and holds to the span's end, where
+                // the folds have closed (below). Its 8 ms lead hands over from the closure.
+                if let Some(rel) = def.release.and_then(|r| phoneme(r, body)) {
+                    oral_gestures_into(&rel, &rel.targets, split - 0.015, t1, 1.4, def.ipa, &mut gestures);
                 }
             }
             Manner::Fricative | Manner::Approximant | Manner::Lateral => add_oral(&def.targets, t0, t1, 1.3, def.ipa),
@@ -307,7 +309,13 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
         } else if def.glottal == Some(Glottal::Stop) {
             gestures.push(Gesture::new(t0, t1, 0.012, 0.015, 8.0, one(ControlKey::CLOSURE, 1.0)).label("ʔ"));
         } else if def.voicing == Voicing::Voiceless {
-            if def.manner == Manner::Stop || def.manner == Manner::Affricate {
+            if def.manner == Manner::Affricate {
+                // apart from the closure on, and together again as the frication ends: in an
+                // affricate the frication is the voice onset time, with no [h] after it, and the
+                // vowel keeps its planned length
+                let open = t0 + 0.15 * dur;
+                gestures.push(Gesture::new(open, js_max(open, t1 - 0.03), 0.035, 0.03, 6.0, one(ControlKey::ABDUCTION, 0.36)).label("aspiration"));
+            } else if def.manner == Manner::Stop {
                 // aspirated when syllable-initial before a vowel and not after /s/ (English-like)
                 let aspirated = next_vowel && !prev_seg.is_some_and(|p| p.ipa == "s");
                 let vot = if aspirated { 0.05 / rate } else { 0.012 };
@@ -397,6 +405,10 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
     }
     Plan { gestures, segments: planned, end }
 }
+
+/// The share of an affricate's span that is closure, the rest being frication (the TSP speakers'
+/// /tʃ/: about 55 ms of closure, 60-65 ms of frication and a fading tail).
+const AFFRICATE_CLOSURE: f64 = 0.45;
 
 /// Front-to-back order of the oral places of articulation.
 fn place_rank(place: &str) -> Option<u8> {

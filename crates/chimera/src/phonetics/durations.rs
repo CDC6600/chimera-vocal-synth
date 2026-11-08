@@ -44,7 +44,9 @@ fn table(ipa: &str) -> Option<(f64, f64)> {
         "d" => (75.0, 50.0),
         "g" => (80.0, 60.0),
         "ʔ" => (40.0, 30.0),
-        "tʃ" => (70.0, 50.0),
+        // not Klatt's 70/50, which can't hold a closure and its frication (his /t/ alone is 75):
+        // the TSP speakers' /tʃ/ phone, 125-140 ms, with Klatt's ratio of minimum to inherent
+        "tʃ" => (125.0, 88.0),
         "dʒ" => (50.0, 30.0),
         "f" => (100.0, 80.0),
         "v" => (60.0, 40.0),
