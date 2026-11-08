@@ -1435,8 +1435,8 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    teeth. Centroid costs now /z/ 6.8 / 2.2, /s/ 3.2 / 1.5, /dʒ/ 3.2. What is left isn't the source's
    corner, see lead 10.
 2. **/ð v/ too loud.** Half closed by experiment 23: /v z/'s folds part and their voice weakens (level
-   /v/ 0 / 1.1). /ð/ is still −14 / −10 dB against −22 / −21, costing 3.0 / 4.3 (lead 13), and it still
-   blocks lead 3.
+   /v/ 0 / 1.1). /ð/ is still −14 / −10 dB against −22 / −21, costing 2.8 / 4.0 (lead 13), and it still
+   blocks lead 3. Experiment 24 has the form that fixes it, blocked by one term.
 3. **The female source.** Experiment 13: about 5 dB of her 10 dB fricative gap is her vowels, too
    loud for her folds. The glottal pulse is 0.17·k² cm², 0.81 of the male's, where her peak flow is
    about 0.64 of his (Holmberg et al. 1988) and her folds about 0.67 of his length (Hirano). A
@@ -1453,7 +1453,9 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    nobody has found its source, and stops may still have it.
 6. **Short /dʒ z/, long nasals.** Duration /z/ 4.0 / 3.0, /dʒ/ 3.4 / 3.9, /ŋ/ 3.1 / 1.7, /n/ 2.0 / 2.0.
    (The judge's "short /k/" was the aligner on near-silent closures; see "A judge correction" below.
-   Read the planner's and the report's numbers together: `phonetics/durations.rs`.)
+   Read the planner's and the report's numbers together: `phonetics/durations.rs`.) **The nasals come
+   first now:** they block lead 13. With /ð/ read at its true length, male /m/ is 1.07 of a mean phone
+   against the men's 0.89 (experiment 24). I didn't find why nasals read long.
 7. **Bursts.** Female /t k/ are 8–9 dB weak (costs 2.8, 3.2), and may move with lead 3. The male /p/
    is 7 dB loud (2.9).
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
@@ -1482,7 +1484,9 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     first "The" as "with a". And after silence or a stop or fricative, speakers' /ð/ isn't a voiced
     fricative at all: 40 ms, weak in every band, a low band of −29 to −35 dB where between vowels it is
     −20 to −22. That looks like the stop-like /ð/ of Zhao 2010 (JASA 128, 2009, seen only as a summary in
-    a search). Its plan and its form need work first, not just its folds.
+    a search). Its plan and its form need work first, not just its folds. **Experiment 24 did that:** a
+    silent dental closure and a burst after silence, a stop or a fricative matches the speakers, and
+    Whisper hears "The". The patch is in its entry, ready to retry once male duration /m/ has room (lead 6).
 14. **A wider opening for /v z/** (from experiment 23). 0.12–0.14 match the speakers' voicing better, and
     0.14 puts /z/'s low band within about 3 dB of theirs. Only female level /z/ stops it: voicing was
     filling her 10 dB frication gap, so it waits on leads 3 and 4.
@@ -1862,3 +1866,134 @@ use the clean render.
     is a decision for the owner, not this log: the 0.14 form needs a fix for "with a" first in any case.
   - Don't retry the folds alone on /ð/, or a shorter /ð/ alone: the tables above cover both.
   - **Duration /z/ may now respond to its plan** (`z` is (75, 40), speakers' 80–90 ms), since MFA can see it (lead 6).
+
+### 24. /ð/ after silence, a stop or a fricative is a silent dental closure and a burst (reverted: every other guard passes, one term breaks)
+
+- Hypothesis (batch 3's lead 13): the synth says one /ð/, a voiced fricative, where speakers say at least three by what
+  comes before it. Measured before changing anything (my own script, the training tokens, MFA's phones, dB re the stressed
+  vowels, the middle half; female / male; "voiced" is my autocorrelation test on the band below 1.2 kHz, not the judge's YIN):
+
+  | before /ð/ | share | MFA's ms | level | below 1.2 kHz | 2–12 kHz | voiced | burst |
+  |---|---|---|---|---|---|---|---|
+  | silence | .35 / .37 | 40 / 40 | −27.3 / −25.3 | −34.7 / −30.9 | −34.9 / −37.1 | .19 / .22 | .67 / .85 |
+  | a stop | .19 / .16 | 40 / 40 | −23.1 / −23.1 | −30.1 / −29.2 | −29.5 / −30.1 | .28 / .25 | .81 / .82 |
+  | a fricative | .13 / .13 | 50 / 40 | −24.4 / −24.4 | −34.4 / −33.3 | −32.5 / −32.1 | .41 / .35 | .42 / .59 |
+  | a vowel | .15 / .15 | 50 / 50 | −20.3 / −19.6 | −21.8 / −20.0 | −39.7 / −38.4 | .73 / .51 | .31 / .56 |
+  | a liquid | .04 / .04 | 50 / 60 | −16.5 / −19.6 | −17.8 / −21.8 | −37.8 / −40.1 | .84 / .72 | .24 / .67 |
+  | a nasal | .14 / .14 | 40 / 40 | −7.6 / −8.6 | −7.8 / −8.7 | −34.7 / −31.4 | .96 / .89 | .24 / .54 |
+
+  "Burst" is the share of tokens whose 2–12 kHz rises at least 15 dB in 4 ms, in the last 60 ms of the phone or the next 20.
+  After silence or a stop that rise sits a median 14–18 ms before the phone's end. After a vowel or liquid it sits 2–10 ms
+  before, so that is the vowel's onset, not a burst. I didn't look at the male tokens after a nasal.
+  - **Three forms.** After silence, a stop or a fricative: both bands near the floor (−38 to −47 dB), a rise, about 20 ms
+    weak in both bands, the vowel. After a vowel or liquid: a smooth dip in the low band to −22 / −20, no silence, 2–12 kHz
+    falling away. So a narrow constriction with weak voice, as /v/. After a nasal: no dip at all, nasal level throughout.
+  - **Time course after silence**, ms re the phone's end, below 1.2 kHz, then 2–12 kHz:
+
+    | | −50 | −40 | −30 | −20 | −10 | 0 | +10 |
+    |---|---|---|---|---|---|---|---|
+    | women, low | −47 | −46 | −44 | −29 | −22 | −7 | −2 |
+    | women, high | −47 | −45 | −42 | −31 | −31 | −26 | −22 |
+    | female synth before, low | −14 | −13 | −13 | −13 | −13 | −9 | −4 |
+    | female synth before, high | −39 | −38 | −38 | −38 | −37 | −35 | −31 |
+    | men, low | −41 | −40 | −32 | −24 | −17 | −7 | −3 |
+    | men, high | −49 | −47 | −42 | −32 | −29 | −26 | −21 |
+    | male synth before, low | −11 | −10 | −10 | −10 | −10 | −8 | −3 |
+    | male synth before, high | −31 | −31 | −30 | −30 | −29 | −29 | −29 |
+
+    Their 2–12 kHz after the rise is about 12 dB under a real /d/'s after silence (−19, −17 / −20, −20).
+  - **Sources.**
+    - Zhao 2010 (JASA 128, 2009–2020, PMC2981115), which I read only as answers from a page-reading tool, quoting it, not the whole
+      article. It selects 100 stop-like /ð/ from TIMIT by closure and release: silence and a burst, or a fading voice bar,
+      silence and a burst, or a fading voice bar and a burst. All are word-initial, followed by [ə ɨ] by selection. Before them:
+      silence 54, /t/ 17, /d/ 8, /s/ 4, /v/ 4, /ə ɨ/ 2. It keeps the dental place (burst peak 4330 Hz, /d/ 3770). It gives no rate by
+      context, no closure length, and no test of what listeners hear.
+    - Zhao's 2007 MIT thesis, as a search's summary only: most often after silence or a stop, less after a fricative or
+      affricate, rarely after a vowel or liquid. This is the rule I used, and the TSP rates above agree with it.
+    - Manuel: only a 1994 ASA abstract (via a search) and Zhao's citing: /ð/ after /n/ is nasal. The nasal row agrees. I didn't get
+      the 1995 paper.
+    - The opening has no source (below).
+- Change (reverted): `crates/chimera/src/phonetics/planner.rs`, by what the planner already knows of the segment before.
+  After a phrase start, a stop, an affricate or a fricative, /ð/ takes a stop's gestures at the inventory's unused `DENT_STOP`
+  (TtX 6.85, TtY 9.0; a probe shows it sealed at `t0`). After a vowel or liquid, 0.09 as /v z/. After a nasal, 0.035 as now, since
+  with the velum coming up the oral pressure doesn't rise as behind a fricative. Its span stays Klatt's. Values tried, speakers'
+  training score from 1.287 (F = female, M = male; breaks only):
+
+  | form | score | verdict |
+  |---|---|---|
+  | A: the folds as in a voiced stop | 1.278 | WORSE: duration ð F +0.99, M +1.72; F duration v +0.54; M duration m +0.58 |
+  | **B: A, the folds apart at 0.09 from `t0` − 15 ms to `t1`** | **1.253** | **WORSE by one term: M duration m +0.69. Whisper 36.09 %, singer 0.588** |
+  | C: B, 0.12 after a vowel | 1.252 | WORSE: M duration m +0.69 |
+  | D: B, 0.035 after a vowel | 1.256 | WORSE: M duration m +0.69 |
+  | E: B, after a fricative as after a vowel | 1.258 | WORSE: M duration m +0.69 (M level ð 0.97) |
+  | F: B, phrase starts left as they were | 1.252 | WORSE: M duration ð +1.86, F duration v +0.62 |
+  | G: B, the closure 25 ms later after a fricative | 1.256 | WORSE: M duration m +0.69 (M level ð 0.61) |
+
+  **Read this before trusting 0.09.** It isn't measured. A's voice bar (below 1.2 kHz −23 to −30 dB, speakers −42 to −47) is read by
+  MFA as phone, 70–80 ms. At 0.09 the closure is silent and voice follows the release by 15–20 ms (probe); at 0.15 and 0.22 by
+  25–30 and more (probe only, not judged). I took the smallest I tried, which is also /v z/'s constant and adds no value.
+- Result in the renders, form B:
+
+  | MFA's ms; level | silence | a stop | a fricative | a vowel | a liquid | a nasal |
+  |---|---|---|---|---|---|---|
+  | speakers, F | 40; −27.3 | 40; −23.1 | 50; −24.4 | 50; −20.3 | 50; −16.5 | 40; −7.6 |
+  | before, F | 30; −32.8 | 50; −23.6 | 30; −12.4 | 50; −11.4 | 30; −7.9 | 40; −10.1 |
+  | B, F | 40; −25.6 | 40; −27.0 | 40; −28.3 | 70; −16.6 | 30; −12.0 | 40; −10.1 |
+  | speakers, M | 40; −25.3 | 40; −23.1 | 40; −24.4 | 50; −19.6 | 60; −19.6 | 40; −8.6 |
+  | before, M | 110; −10.9 | 70; −13.4 | 30; −10.0 | 50; −9.0 | 30; −5.8 | 40; −7.1 |
+  | B, M | 40; −17.8 | 50; −23.6 | 70; −21.9 | 70; −13.1 | 30; −9.2 | 60; −7.0 |
+
+  After silence, against the table above: female low −53 −55 −53 −25 −20 −11 −5, high −48 −49 −49 −33 −31 −32 −29; male low −53 −56 −54 −18
+  −16 −8 −4, high −49 −49 −49 −27 −23 −25 −26. Its rise comes a median 18 / 20 ms before the phone's end (speakers 18 / 16), in .85 / 1.00 of
+  tokens (.67 / .85; before .01 / .03). Still off: the male burst is about 5 dB loud; after a vowel the dip is 20 ms long and 4–6 dB
+  shallow, as it is flat for its whole span where the speakers' is V-shaped; /v/ before /ð/ now reads 40 / 40 ms where it was 70 / 80 and
+  speakers have 55 / 50; MFA gives part of the closure after a stop to silence in about half the tokens (F 136 → 66, M 96 → 47 after a stop).
+- Speakers, form B: 1.287 → 1.253 (training, **WORSE**, one break), 1.432 → 1.466 (held-out). Female 1.918 → 1.873, male 0.657 → 0.633.
+  - Groups, female: level 2.12 → 2.05, sibilants 2.86 → 2.82, timing 0.77 → 0.75, spectrum 1.31 → 1.27, voicing 0.30 → 0.26. Male: level 0.64
+    → 0.53, sibilants 0.80 → 0.77, timing 0.53 → 0.60, spectrum 1.64 → 1.62, voicing 0.47 → 0.38, intonation 0.85 → 0.80.
+  - Down: level /ð/ 2.79 → 0.15, 4.04 → 0.49 (−14.2 → −24.5, −10.5 → −17.8; speakers −22.1, −21.0); male duration /ð/ 0.22 → 0 (0.658 → 0.533;
+    men 0.536); diagnostic voiced /ð/ 1.26 → 0, 2.35 → 0 (0.57 → 0.35, 0.69 → 0.33; speakers 0.34, 0.36); spectrum /ð/ 3.82 → 2.53, 3.03 →
+    2.20; duration /tʃ/ 1.33 → 0.68, 0.84 → 0.43; female duration /h/ 2.04 → 1.43; male level /p/ 0.91 → 0.42.
+  - Up: **male duration /m/ 0.01 → 0.70**; female duration /v/ 0.95 → 1.39; duration /n/ 1.78 → 2.04, 2.10 → 2.30; male /ŋ/ 1.50 → 1.89, /θ/ 1.52 →
+    1.90, level /tʃ/ 1.28 → 1.62; female level /ʃ/ +0.24, /d/ +0.26, burst /d/ +0.23. I didn't look into those level moves of about 0.4 dB.
+  - **The break is arithmetic, and the old value was right for the wrong reason.** About 250 of the 289 male /m/ tokens read the same ms. A
+    duration is over the utterance's mean phone, and that mean falls 2–3 % in a sentence whose first /ð/ goes from 110 to 40 ms, its true length.
+    Nasals read long (lead 6), so they rise. The nine speakers' medians were .863 .983 .983 .984 **.998** 1.058 1.058 1.089 1.139 and are .905
+    .979 .995 1.004 **1.073** 1.10 1.102 1.109 1.126: the median sits by a gap, and one speaker's medians crossing moves it 0.075. The term
+    needs 1.038 or less. C, D, E and G leave it at exactly 0.70. Only leaving the phrase starts alone (F) avoids it, and that form breaks more.
+    I didn't push on a value to flip one token.
+- Whisper, form B: 37.75 → **36.09 %** (training; baseline 36.75, NO CLEAR CHANGE), 39.33 → 43.67 % (held-out; baseline 44.33). **Experiment 23's
+  "with a" is gone:** no training sentence reads it, and "The" is heard wherever Whisper hears the words around it. The held-out rise, like the
+  speakers', goes against the training gain and is past the ±2 of a small change. I didn't look into it, by the rules; the retry should report it.
+- Singer, form B: 0.587 → 0.588 (training; baseline 0.587, NO CLEAR CHANGE), 0.805 → 0.807 (held-out). Guards hold: 0 notes off time, 0 dropped
+  gestures, note MCD 8.612 dB (guard 8.714), envelope correlation 0.813, pitch error 4.82 cents. The rule applies to sung phrases too.
+- Speed: not run; a plan change, and reverted. Tests at form B: `consonant_artifacts`, `voiced_fricatives`, `affricates`, `speech_quality` and
+  `geometry_continuity` pass. The full workspace wasn't run. Nobody has listened to it.
+- Verdict: reverted, on one marginal break. It is what the README's "order matters" describes, so the nasals go first. The summary lines showed
+  the held-out numbers at form B, and C to G aren't chosen on them: none was kept. About an hour.
+- The patch, to retry. `planner.rs`, before the gestures are built:
+
+  ```rust
+  for i in 0..segs.len() {
+      let after_obstruent = i == 0 || segs[i - 1].def.is_some_and(|d| matches!(d.manner, Manner::Stop | Manner::Affricate | Manner::Fricative));
+      if segs[i].ipa == "ð" && after_obstruent {
+          let d = segs[i].def.as_mut().unwrap();
+          d.manner = Manner::Stop;
+          d.targets = ArticPatch::default();
+          d.targets.set(ArticKey::TtX, 6.85); // DENT_STOP
+          d.targets.set(ArticKey::TtY, 9.0);
+      }
+  }
+  ```
+
+  Before the voiced fricative's branch: `else if def.ipa == "ð" && def.manner == Manner::Stop { gestures.push(Gesture::new(t0 - 0.015, t1, 0.03, 0.03, 6.0,
+  one(ControlKey::ABDUCTION, VOICED_FRICATIVE_OPENING)).label("stop-like ð")); }`. In that branch, `/ð/` takes `DH_OPENING` only when `prev_seg` is a nasal.
+  The planned segment keeps "ð", so the judges' dictionary doesn't change. A test should hold it: after a phrase start the span's low band is near
+  silence until the release, where the old engine has −10 to −14 dB.
+- Next:
+  - **Long nasals first (lead 6).** Then retry this patch: −0.03 or better, and it frees level /ð/ for lead 3. Find why they read long (MFA read 24 ms over the
+    plan at the judge's first measure; closures land early, lead 7). Don't shorten the table until that's known.
+  - Or the owner may decide that this term may break, as experiment 23 asked about duration /ð/. It's the owner's call, not this log's.
+  - On the retry: the male burst (is a dental closure's seal weaker, or its pressure lower?), and /ð/ after a vowel, which wants a shorter, deeper dip. Both
+    are terms already near zero, so they are for the ear.
+  - Don't retry the context rule's variants above for this break: it doesn't move.
