@@ -226,6 +226,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
 dependencies = [
  "find-msvc-tools",
+ "jobserver",
+ "libc",
  "shlex",
 ]
 
@@ -259,6 +261,7 @@ dependencies = [
  "libm",
  "serde",
  "serde_json",
+ "smallvec",
 ]
 
 [[package]]
@@ -276,6 +279,7 @@ name = "chimera-plugin"
 version = "0.1.0"
 dependencies = [
  "chimera",
+ "clap-wrapper",
  "flate2",
  "nih_plug",
  "raw-window-handle 0.6.2",
@@ -297,6 +301,15 @@ dependencies = [
 name = "clap-sys"
 version = "0.5.0"
 source = "git+https://github.com/micahrj/clap-sys.git?rev=25d7f53fdb6363ad63fbd80049cb7a42a97ac156#25d7f53fdb6363ad63fbd80049cb7a42a97ac156"
+
+[[package]]
+name = "clap-wrapper"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd1028157e0bb8ddb7b0f95269da629bb1b717e904752316ef7752b85c4bde82"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "combine"
@@ -774,6 +787,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "getrandom"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
+]
+
+[[package]]
 name = "gimli"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1167,6 +1191,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jobserver"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
+dependencies = [
+ "getrandom",
+ "libc",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1306,7 +1340,7 @@ dependencies = [
 [[package]]
 name = "nih_plug"
 version = "0.0.0"
-source = "git+https://github.com/robbert-vdh/nih-plug?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
+source = "git+https://github.com/robbert-vdh/nih-plug.git?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -1329,7 +1363,6 @@ dependencies = [
  "raw-window-handle 0.5.2",
  "serde",
  "serde_json",
- "vst3-sys",
  "widestring",
  "windows 0.44.0",
 ]
@@ -1337,7 +1370,7 @@ dependencies = [
 [[package]]
 name = "nih_plug_derive"
 version = "0.1.0"
-source = "git+https://github.com/robbert-vdh/nih-plug?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
+source = "git+https://github.com/robbert-vdh/nih-plug.git?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1347,7 +1380,7 @@ dependencies = [
 [[package]]
 name = "nih_plug_xtask"
 version = "0.1.0"
-source = "git+https://github.com/robbert-vdh/nih-plug?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
+source = "git+https://github.com/robbert-vdh/nih-plug.git?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011f41a6d10fc8c7a6084e4f4dee0143683"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1726,6 +1759,12 @@ checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "raw-window-handle"
@@ -2331,43 +2370,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vst3-com"
-version = "0.1.0"
-source = "git+https://github.com/robbert-vdh/vst3-sys.git?branch=fix%2Fdrop-box-from-raw#b3ff4d775940f5b476b9d1cca02a90e07e1922a2"
-dependencies = [
- "vst3-com-macros",
-]
-
-[[package]]
-name = "vst3-com-macros"
-version = "0.2.0"
-source = "git+https://github.com/robbert-vdh/vst3-sys.git?branch=fix%2Fdrop-box-from-raw#b3ff4d775940f5b476b9d1cca02a90e07e1922a2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "vst3-com-macros-support",
-]
-
-[[package]]
-name = "vst3-com-macros-support"
-version = "0.2.0"
-source = "git+https://github.com/robbert-vdh/vst3-sys.git?branch=fix%2Fdrop-box-from-raw#b3ff4d775940f5b476b9d1cca02a90e07e1922a2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "vst3-sys"
-version = "0.1.0"
-source = "git+https://github.com/robbert-vdh/vst3-sys.git?branch=fix%2Fdrop-box-from-raw#b3ff4d775940f5b476b9d1cca02a90e07e1922a2"
-dependencies = [
- "vst3-com",
-]
 
 [[package]]
 name = "walkdir"

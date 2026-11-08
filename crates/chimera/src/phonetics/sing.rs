@@ -9,15 +9,18 @@
 //! until the key is released (tagged gestures, ended with GestureScore.release), and the release
 //! sings the glide and the coda.
 //!
-//! These planners allocate (they run off the audio thread).
+//! [`plan_song`] allocates and runs off the audio thread. The live planners come in two forms:
+//! `*_into` over a [`LiveSyllable`] allocates nothing once its `Vec` has capacity (the plugin's
+//! audio thread); the plain ones over a [`Syllable`] return a `Vec` (the browser's JSON API).
 
 use super::inventory::phoneme;
 use crate::anatomy::human::BodyMix;
-use super::planner::{PlanOptions, diphthong_parts, plan_utterance};
+use super::planner::{PlanOptions, TimedSegment, diphthong_parts, plan_timed, plan_utterance};
 use super::{Intonation, Plan, PlannedSegment, Segment, Syllable};
-use crate::control::score::{ControlKey, Gesture, Targets};
+use crate::control::score::{ControlKey, Gesture, Label, Targets};
 use crate::math::{js_max, js_min};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 /// `440 · 2^((m − 69)/12)`, the same formula and operation order as `sing.ts`.
 pub use crate::math::midi_to_hz;
@@ -190,6 +193,128 @@ const LIVE_T0: f64 = -0.045;
 /// a held vowel lasts at most this long (s)
 const HOLD: f64 = 30.0;
 
+/// Consonants kept on each side of a live syllable's vowel (longer clusters are cut).
+pub const MAX_CLUSTER: usize = 8;
+
+/// Consonants held inline.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Cluster {
+    n: u8,
+    ipa: [Label; MAX_CLUSTER],
+}
+
+impl Cluster {
+    fn from_segments(segs: &[Segment]) -> Cluster {
+        let mut c = Cluster::default();
+        for (slot, s) in c.ipa.iter_mut().zip(segs) {
+            *slot = Label::new(&s.ipa);
+            c.n += 1;
+        }
+        c
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.ipa[..self.n as usize].iter().map(|l| l.as_str())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+}
+
+/// A [`Syllable`] as the live planners need it: `Copy`, so holding one costs no allocation and a
+/// note's coda outlives a change of lyrics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiveSyllable {
+    pub onset: Cluster,
+    /// vowel (a diphthong stays one nucleus: "aɪ")
+    pub nucleus: Label,
+    pub coda: Cluster,
+    /// continue the previous syllable's vowel at a new pitch
+    pub melisma: bool,
+}
+
+impl LiveSyllable {
+    /// Sung when the lyrics are empty.
+    pub fn ah() -> LiveSyllable {
+        LiveSyllable { onset: Cluster::default(), nucleus: Label::new("ɑ"), coda: Cluster::default(), melisma: false }
+    }
+}
+
+impl From<&Syllable> for LiveSyllable {
+    fn from(s: &Syllable) -> LiveSyllable {
+        LiveSyllable { onset: Cluster::from_segments(&s.onset), nucleus: Label::new(&s.nucleus.ipa), coda: Cluster::from_segments(&s.coda), melisma: s.melisma == Some(true) }
+    }
+}
+
+/// [`NoteOnOptions`] over a [`LiveSyllable`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiveNoteOn {
+    pub body: BodyMix,
+    pub vibrato: f64,
+    pub tag: f64,
+    /// the previous note of a legato pair: its syllable and MIDI note
+    pub legato_from: Option<(LiveSyllable, f64)>,
+}
+
+/// The planner's input for one live note.
+type LiveSegments<'a> = SmallVec<[TimedSegment<'a>; super::planner::INLINE_SEGMENTS]>;
+
+/// Sung consonants, shorter than spoken ones (see [`cdur`]).
+fn push_consonants<'a>(out: &mut LiveSegments<'a>, c: &'a Cluster, body: BodyMix, k: f64) {
+    for ipa in c.iter() {
+        out.push(TimedSegment { ipa, dur: cdur(ipa, body, k), stress: None, f0: None });
+    }
+}
+
+/// What follows a held vowel: the diphthong's glide (at the note's pitch) and the coda.
+fn push_tail<'a>(out: &mut LiveSegments<'a>, syl: &'a LiveSyllable, body: BodyMix, hz: f64) {
+    if let Some((_, b)) = diphthong_parts(syl.nucleus.as_str()) {
+        out.push(TimedSegment { ipa: b, dur: 0.07, stress: Some(1), f0: Some(hz) });
+    }
+    push_consonants(out, &syl.coda, body, 0.7);
+}
+
+/// Key pressed: sing the previous syllable's glide and coda if it is still sounding (legato),
+/// then this syllable's onset, then its vowel held open-ended. Every gesture gets `tag`; the
+/// pitch and vibrato get `tag + 1`, so a melisma can change pitch without ending the vowel.
+/// Appends to `out`.
+pub fn plan_note_on_into(syl: &LiveSyllable, midi: f64, o: &LiveNoteOn, out: &mut Vec<Gesture>) {
+    let hz = midi_to_hz(midi);
+    let mut segs = LiveSegments::new();
+    if let Some((from, from_midi)) = &o.legato_from {
+        push_tail(&mut segs, from, o.body, midi_to_hz(*from_midi));
+    }
+    push_consonants(&mut segs, &syl.onset, o.body, 0.7);
+    let nucleus = syl.nucleus.as_str();
+    segs.push(TimedSegment { ipa: diphthong_parts(nucleus).map_or(nucleus, |p| p.0), dur: HOLD, stress: Some(1), f0: Some(hz) });
+    let first = out.len();
+    let timing = plan_timed(segs.into_iter(), &PlanOptions { body: o.body, t0: LIVE_T0, f0: Some(hz), intonation: Some(Intonation::Flat), open_end: Some(true), ..Default::default() }, out, None);
+    for g in &mut out[first..] {
+        g.tag = Some(if g.targets.has(ControlKey::F0) { o.tag + 1.0 } else { o.tag });
+    }
+    out.push(vibrato_gesture(timing.last.0, timing.last.1, o.vibrato, Some(o.tag + 1.0)));
+}
+
+/// Melisma, live: the held vowel moves to a new pitch (release tag + 1 first). Appends to `out`.
+pub fn plan_melisma_into(midi: f64, o: &MelismaOptions, out: &mut Vec<Gesture>) {
+    let MelismaOptions { vibrato, tag } = *o;
+    out.push(Gesture::new(0.0, HOLD, 0.05, 0.06, 6.0, Targets::default().with(ControlKey::F0, midi_to_hz(midi))).label("pitch").tag(tag + 1.0));
+    out.push(vibrato_gesture(0.0, HOLD, vibrato, Some(tag + 1.0)));
+}
+
+/// Key released: the diphthong's glide and the coda (release the note's tags first). Appends to
+/// `out`; nothing when the syllable ends on its vowel.
+pub fn plan_note_off_into(syl: &LiveSyllable, midi: f64, body: BodyMix, out: &mut Vec<Gesture>) {
+    let hz = midi_to_hz(midi);
+    let mut segs = LiveSegments::new();
+    push_tail(&mut segs, syl, body, hz);
+    if segs.is_empty() {
+        return;
+    }
+    plan_timed(segs.into_iter(), &PlanOptions { body, t0: LIVE_T0, f0: Some(hz), intonation: Some(Intonation::Flat), ..Default::default() }, out, None);
+}
+
 /// The previous note of a legato pair.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,22 +333,11 @@ pub struct NoteOnOptions {
     pub legato_from: Option<LegatoFrom>,
 }
 
-/// Key pressed: sing the previous syllable's glide and coda if it is still sounding (legato),
-/// then this syllable's onset, then its vowel held open-ended. Every gesture gets `tag`; the
-/// pitch and vibrato get `tag + 1`, so a melisma can change pitch without ending the vowel.
+/// [`plan_note_on_into`] over a [`Syllable`].
 pub fn plan_note_on(syl: &Syllable, midi: f64, o: &NoteOnOptions) -> Vec<Gesture> {
-    let hz = midi_to_hz(midi);
-    let mut segs: Vec<Segment> = Vec::new();
-    if let Some(l) = &o.legato_from {
-        segs.extend(tail(&l.syl, o.body, midi_to_hz(l.midi)));
-    }
-    segs.extend(consonants(&syl.onset, o.body, 0.7));
-    let parts = diphthong_parts(&syl.nucleus.ipa);
-    segs.push(Segment { ipa: parts.map_or(syl.nucleus.ipa.clone(), |p| p.0.to_string()), dur: Some(HOLD), f0: Some(hz), stress: Some(1), word_end: None });
-    let plan = plan_utterance(&segs, &PlanOptions { body: o.body, t0: LIVE_T0, f0: Some(hz), intonation: Some(Intonation::Flat), open_end: Some(true), ..Default::default() });
-    let vowel = &plan.segments[plan.segments.len() - 1];
-    let mut out: Vec<Gesture> = plan.gestures.iter().map(|g| g.tag(if g.targets.has(ControlKey::F0) { o.tag + 1.0 } else { o.tag })).collect();
-    out.push(vibrato_gesture(vowel.t0, vowel.t1, o.vibrato, Some(o.tag + 1.0)));
+    let mut out = Vec::new();
+    let legato_from = o.legato_from.as_ref().map(|l| (LiveSyllable::from(&l.syl), l.midi));
+    plan_note_on_into(&syl.into(), midi, &LiveNoteOn { body: o.body, vibrato: o.vibrato, tag: o.tag, legato_from }, &mut out);
     out
 }
 
@@ -234,32 +348,16 @@ pub struct MelismaOptions {
     pub tag: f64,
 }
 
-/// Melisma, live: the held vowel moves to a new pitch (release tag + 1 first).
+/// [`plan_melisma_into`].
 pub fn plan_melisma(midi: f64, o: &MelismaOptions) -> Vec<Gesture> {
-    let MelismaOptions { vibrato, tag } = *o;
-    vec![
-        Gesture::new(0.0, HOLD, 0.05, 0.06, 6.0, Targets::default().with(ControlKey::F0, midi_to_hz(midi))).label("pitch").tag(tag + 1.0),
-        vibrato_gesture(0.0, HOLD, vibrato, Some(tag + 1.0)),
-    ]
+    let mut out = Vec::with_capacity(2);
+    plan_melisma_into(midi, o, &mut out);
+    out
 }
 
-/// Key released: the diphthong's glide and the coda (release the note's tags first).
+/// [`plan_note_off_into`] over a [`Syllable`].
 pub fn plan_note_off(syl: &Syllable, midi: f64, body: BodyMix) -> Vec<Gesture> {
-    let hz = midi_to_hz(midi);
-    let segs = tail(syl, body, hz);
-    if segs.is_empty() {
-        return Vec::new();
-    }
-    plan_utterance(&segs, &PlanOptions { body, t0: LIVE_T0, f0: Some(hz), intonation: Some(Intonation::Flat), ..Default::default() }).gestures
-}
-
-/// What follows a held vowel: the diphthong's glide (at the note's pitch) and the coda.
-fn tail(syl: &Syllable, body: BodyMix, hz: f64) -> Vec<Segment> {
-    let parts = diphthong_parts(&syl.nucleus.ipa);
-    let mut out: Vec<Segment> = Vec::new();
-    if let Some((_, b)) = parts {
-        out.push(Segment { ipa: b.to_string(), dur: Some(0.07), stress: Some(1), f0: Some(hz), word_end: None });
-    }
-    out.extend(consonants(&syl.coda, body, 0.7));
+    let mut out = Vec::new();
+    plan_note_off_into(&syl.into(), midi, body, &mut out);
     out
 }

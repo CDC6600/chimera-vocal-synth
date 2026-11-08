@@ -1,6 +1,6 @@
 //! Phonetics: IPA, English G2P, syllables, durations, the gestural planner, singing, beatbox.
-//! These run off the audio thread (they allocate); their output is a [`Plan`] of gestures that a
-//! voice plays.
+//! Their output is a [`Plan`] of gestures that a voice plays. These run off the audio thread (they
+//! allocate), except the live note planners in [`sing`] (`*_into`).
 
 use crate::control::score::Gesture;
 use serde::{Deserialize, Serialize};

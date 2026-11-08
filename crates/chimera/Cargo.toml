@@ -9,6 +9,7 @@ license.workspace = true
 libm = "=0.2.16"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+smallvec = "1"
 
 [dev-dependencies]
 flate2 = "1"

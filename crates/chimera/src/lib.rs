@@ -28,6 +28,7 @@ pub mod control {
     pub mod articulators;
     pub mod beat_player;
     pub mod score;
+    pub mod singer;
 }
 
 pub mod voice {

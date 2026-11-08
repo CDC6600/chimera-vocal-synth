@@ -272,5 +272,5 @@ render call and so it isn't needed.
 - **Determinism on aarch64/macOS** is untested.
 - **Performance beyond TS parity.** Exactness with the TS engine ruled out reciprocal
   multiplies and similar changes in the FDTD step. That's possible now, with a re-bless.
-- **Real-time planning.** `plan_note_on` allocates; a JDAW live-input path will want a
-  non-allocating form.
+- **Real-time planning of speech and songs.** Live notes don't allocate (`control::singer`, over
+  `plan_note_on_into` and friends); `plan_utterance` and `plan_song` still do.
