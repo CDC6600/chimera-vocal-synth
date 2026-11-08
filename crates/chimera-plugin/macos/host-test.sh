@@ -5,7 +5,8 @@
 # scripts capture it and post clicks, which is what makes this work on CI. See docs/plugin.md,
 # "Testing in a host". Screenshots also go to the log: the workflow uploads artifacts before this runs.
 set -euo pipefail
-root=$(git rev-parse --show-toplevel)
+# from this file, not git: validate.sh runs it from a folder of downloaded tools
+root=$(cd "$(dirname "$0")/../../.." && pwd)
 here="$root/crates/chimera-plugin"
 version=785
 sha=4501a1280ef5ca33e1ad32974917281bfb31514bcfc043fe3e586cba6cba4686
