@@ -11,7 +11,7 @@ import { followSpoken, useSpeech } from "./speech.ts";
 import { useStore } from "./store.ts";
 
 /** Scalars at the head of a `/poll` response: POLL_HEADER in crates/chimera-plugin/src/bridge.rs. */
-const POLL_HEADER = 20;
+const POLL_HEADER = 21;
 /** Parameters are read every this many frames: about 20 times a second. */
 const PARAMS_EVERY = 3;
 /** The engine-load readout's window (ms). */
@@ -84,6 +84,7 @@ function followParams(p: Params): void {
   if (!gestureOpen("vibrato") && p.vibrato !== useSing.getState().vibrato) useSing.setState({ vibrato: p.vibrato });
 }
 
+let analysers: ReturnType<typeof engine.pluginAnalysers> | null = null;
 let busy = 0, audio = 0, loadAt = 0;
 let frames = 0;
 let shownNote = -1;
@@ -94,13 +95,18 @@ async function poll(): Promise<void> {
   const r = await fetch("/poll", { cache: "no-store" });
   const buf = await r.arrayBuffer();
   const h = new Float64Array(buf, 0, POLL_HEADER);
-  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, n] = h;
+  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, samples, n] = h;
   if (n > 0) {
     const { t, nPh, nOr } = decodeTelemetry(new Float64Array(buf, 8 * POLL_HEADER, n), new Uint8Array(buf, 8 * (POLL_HEADER + n), TELE_LABELS));
     // a new voice's clock starts from zero: what's on the roll belongs to the old timeline
     if (t.clock < lastClock) clearPluginNotes();
     lastClock = t.clock;
     engine.receive({ type: "telemetry", t, load: engine.load, body: { female, child }, nPh, nOr, beatStep: -1 });
+  }
+  // the output's samples, after the telemetry and its labels; a slice, because they may not be aligned
+  if (samples > 0) {
+    const at = 8 * (POLL_HEADER + n) + (n > 0 ? TELE_LABELS : 0);
+    analysers?.feed(new Float32Array(buf.slice(at, at + 4 * samples)));
   }
   busy += busyNs;
   audio += audioNs;
@@ -151,5 +157,6 @@ export async function attachToPlugin(): Promise<void> {
   // for the end-to-end test: what the piano roll holds isn't in the DOM
   (window as unknown as { __chimeraRoll: typeof roll }).__chimeraRoll = roll;
   adopt(await getJson<Snapshot>("/state"));
+  analysers = engine.pluginAnalysers();
   requestAnimationFrame(loop);
 }

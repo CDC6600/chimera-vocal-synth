@@ -56,6 +56,7 @@ fn the_audio_threads_path_does_not_allocate() {
         c.render(buf);
         shared.watch();
         c.end_block(buf.len(), &shared);
+        shared.feed_scope(buf);
     };
     let t = Transport { playing: true, position: Some(0.0) };
 

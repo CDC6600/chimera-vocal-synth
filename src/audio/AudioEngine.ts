@@ -5,6 +5,7 @@
 import workletUrl from "../worklet/processor.ts?worker&url";
 import { chimeraModule } from "../wasm/chimera.ts";
 import { inPlugin, ipc, sendToPlugin, setParam, volumeToDb } from "./pluginBridge.ts";
+import { SampleAnalyser, type Analyser } from "./sampleAnalyser.ts";
 import type { ToWorklet, FromWorklet, TelemetryMessage, PlannedMessage, CreatureTelemetryMessage } from "../worklet/protocol.ts";
 import type { BodyMix } from "../wasm/types.ts";
 import type { HumanArtic } from "../wasm/types.ts";
@@ -12,12 +13,16 @@ import type { VoiceSource } from "../wasm/types.ts";
 
 type Listener = (t: TelemetryMessage) => void;
 
+const ANALYSER_SIZE = 4096;
+const ANALYSER_SMOOTHING = 0.6;
+const FAST_ANALYSER_SIZE = 2048;
+
 export class AudioEngine {
   ctx: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
-  analyser: AnalyserNode | null = null;
+  analyser: Analyser | null = null;
   /** unsmoothed, short-window analyser for the spectrogram */
-  analyserFast: AnalyserNode | null = null;
+  analyserFast: Analyser | null = null;
   /** long time-domain window for the waveform scope */
   analyserScope: AnalyserNode | null = null;
   private master: GainNode | null = null;
@@ -70,11 +75,11 @@ export class AudioEngine {
     master.gain.value = 0.8;
     this.master = master;
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 4096;
-    analyser.smoothingTimeConstant = 0.6;
+    analyser.fftSize = ANALYSER_SIZE;
+    analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
     this.analyser = analyser;
     const fast = ctx.createAnalyser();
-    fast.fftSize = 2048;
+    fast.fftSize = FAST_ANALYSER_SIZE;
     fast.smoothingTimeConstant = 0;
     this.analyserFast = fast;
     const scope = ctx.createAnalyser();
@@ -107,6 +112,20 @@ export class AudioEngine {
     master.connect(scope);
     node.port.onmessage = (e: MessageEvent<FromWorklet>) => this.receive(e.data);
     await ctx.resume();
+  }
+
+  /** In the plugin there's no Web Audio: the same analysers, fed with what the audio thread sends. */
+  pluginAnalysers(): { feed: (samples: Float32Array) => void } {
+    const slow = new SampleAnalyser(ANALYSER_SIZE, ANALYSER_SMOOTHING);
+    const fast = new SampleAnalyser(FAST_ANALYSER_SIZE, 0);
+    this.analyser = slow;
+    this.analyserFast = fast;
+    return {
+      feed: (samples) => {
+        slow.push(samples);
+        fast.push(samples);
+      },
+    };
   }
 
   /** A message from the engine: the worklet's, or the plugin's as the page's poll decodes it. */

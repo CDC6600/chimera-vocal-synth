@@ -710,3 +710,27 @@ fn settings_from_before_speak_still_load() {
     let back: Settings = serde_json::from_str(&serde_json::to_string(&edited).unwrap()).unwrap();
     assert_eq!(back, edited);
 }
+
+// ---------------------------------------------------------------- the live spectrum
+
+/// The audio thread keeps its output for the editor only while someone is looking, never more than
+/// what was reserved, and the reader gets the samples in order.
+#[test]
+fn the_output_reaches_the_editor_only_while_it_watches() {
+    let shared = Shared::default();
+    shared.restart(FS);
+    let cap = shared.scope.lock().unwrap().capacity();
+    assert!(cap as f64 > 192000.0 / 15.0, "room for a slow poll at any rate: {cap}");
+    shared.feed_scope(&[1.0; 256]);
+    assert_eq!(shared.scope.lock().unwrap().len(), 0, "nobody's looking");
+    shared.watch();
+    let block: Vec<f32> = (0..256).map(|i| i as f32).collect();
+    shared.feed_scope(&block);
+    assert_eq!(*shared.scope.lock().unwrap(), block);
+    // a window that stopped reading: full, and no bigger
+    for _ in 0..cap {
+        shared.feed_scope(&block);
+    }
+    let scope = shared.scope.lock().unwrap();
+    assert_eq!((scope.len(), scope.capacity()), (cap, cap));
+}

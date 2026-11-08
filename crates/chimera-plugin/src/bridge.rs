@@ -26,9 +26,10 @@ const NOT_BUILT: &str = "<!doctype html><body style='background:#000;color:#fff;
 /// Scalars at the head of a `/poll` response (f64, little-endian), in order: revision,
 /// syllablesVersion, cursor, sung, note, noteSerial, busyNs, audioNs, loadPeak, faulted, playing, the
 /// telemetry's female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, linesGeneration,
-/// speechCursor, and the number of telemetry values. Those follow (see `TELE_HEADER`), then the
-/// `TELE_LABELS` bytes of active labels. Keep in step with `src/ui/pluginState.ts`.
-pub const POLL_HEADER: usize = 20;
+/// speechCursor, the number of output samples, and the number of telemetry values. Those follow (see
+/// `TELE_HEADER`), then the `TELE_LABELS` bytes of active labels if there was telemetry, then the
+/// samples as f32. Keep in step with `src/ui/pluginState.ts`.
+pub const POLL_HEADER: usize = 21;
 
 /// The editor window's first size, and the limits of its grip (points).
 pub const WINDOW_DEFAULT: (u32, u32) = (1280, 800);
@@ -235,9 +236,10 @@ impl Bridge {
         let s = &self.shared;
         s.watch();
         let lines_generation = s.speech.lock().unwrap_or_else(|e| e.into_inner()).lines_generation;
+        let mut scope = s.scope.lock().unwrap_or_else(|e| e.into_inner());
         let mut frame = s.telemetry.lock().unwrap_or_else(|e| e.into_inner());
         let n = if frame.fresh { frame.block.len() } else { 0 };
-        let mut out = Vec::with_capacity(8 * (POLL_HEADER + n) + TELE_LABELS);
+        let mut out = Vec::with_capacity(8 * (POLL_HEADER + n) + TELE_LABELS + 4 * scope.len());
         let header: [f64; POLL_HEADER] = [
             s.revision.load(Ordering::Relaxed) as f64,
             s.syllables_version.load(Ordering::Relaxed) as f64,
@@ -259,6 +261,7 @@ impl Bridge {
             f64::from_bits(s.spoken_t0.load(Ordering::Relaxed)),
             lines_generation as f64,
             s.speech_cursor.load(Ordering::Relaxed) as f64,
+            scope.len() as f64,
             n as f64,
         ];
         for x in header {
@@ -271,6 +274,10 @@ impl Bridge {
             out.extend_from_slice(&frame.labels);
             frame.fresh = false;
         }
+        for x in scope.iter() {
+            out.extend_from_slice(&x.to_le_bytes());
+        }
+        scope.clear();
         out
     }
 

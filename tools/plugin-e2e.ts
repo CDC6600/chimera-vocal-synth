@@ -223,6 +223,19 @@ try {
   check("and sent nothing back", after.settings.lyrics === "la la land" && after.settings.body.child === 1 && after.settings.artic.jaw === 1.5 && after.settings.f0 === 300, after.settings);
   await reopened.close();
 
+  // ---- the live spectrum: the output's samples reach the page's analysers
+  await page.getByRole("radio", { name: /^play$/i }).click();
+  await host("note", 57);
+  await until("a held note shows in the spectrum's data", () => page.evaluate(() => {
+    const an = (window as never as { __chimeraEngine: { analyser: { frequencyBinCount: number; getFloatFrequencyData(o: Float32Array): void }; sampleRate: number } }).__chimeraEngine;
+    const out = new Float32Array(an.analyser.frequencyBinCount);
+    an.analyser.getFloatFrequencyData(out);
+    // the 220 Hz fundamental stands well above the noise floor up at 20 kHz
+    const bin = (f: number) => Math.round((f / an.sampleRate) * 2 * out.length);
+    return out[bin(220)] > -80 && out[bin(220)] > out[bin(20000)] + 20;
+  }));
+  await host("off", 57);
+
   // ---- Speak: each note says the next line
   const modeBefore = (await state()).settings.mode as string;
   await page.getByRole("radio", { name: /^speak$/i }).click();

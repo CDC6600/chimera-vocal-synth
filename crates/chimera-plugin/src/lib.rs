@@ -246,6 +246,7 @@ impl Plugin for Chimera {
             return ProcessStatus::KeepAlive;
         }
 
+        shared.feed_scope(mono);
         for x in mono.iter_mut() {
             *x *= util::db_to_gain_fast(params.gain.smoothed.next());
         }

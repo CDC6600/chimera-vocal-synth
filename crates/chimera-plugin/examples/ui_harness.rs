@@ -94,6 +94,7 @@ fn main() {
                 }
                 core.render(&mut buf);
                 core.end_block(buf.len(), &shared);
+                shared.feed_scope(&buf);
                 shared.note_load(started.elapsed().as_nanos() as u64, buf.len());
                 next += block;
                 std::thread::sleep(next.saturating_duration_since(Instant::now()));

@@ -33,6 +33,8 @@ const BEND_RANGE: f64 = 2.0;
 const TELEMETRY_RATE: f64 = 60.0;
 /// A poll keeps telemetry flowing for this long (s).
 const WATCH_TIME: f64 = 0.25;
+/// Output samples kept for the editor's spectrum: more than a poll's worth at any sample rate.
+const SCOPE_SAMPLES: usize = 16384;
 /// The key that speaks at the body's natural pitch, and how far a key may move it (semitones).
 const SPEECH_ROOT: f64 = 60.0;
 const SPEECH_RANGE: f64 = 24.0;
@@ -230,6 +232,8 @@ pub struct Shared {
     /// and a restore can't interleave. Never touched on the audio thread.
     transaction: Mutex<()>,
     pub telemetry: Mutex<TelemetryFrame>,
+    /// the output since the editor last read it, for its spectrum (never grows past its capacity)
+    pub scope: Mutex<Vec<f32>>,
     /// samples of telemetry still wanted
     watch: AtomicI64,
     pub syllables: Mutex<Vec<Syllable>>,
@@ -386,6 +390,10 @@ impl Shared {
         self.dirty.store(false, Ordering::Release);
         drop(p);
         drop(old);
+        let mut scope = self.scope.lock().unwrap_or_else(|e| e.into_inner());
+        scope.clear();
+        scope.reserve_exact(SCOPE_SAMPLES);
+        drop(scope);
         self.sample_rate.store(sample_rate.to_bits(), Ordering::Relaxed);
         self.faulted.store(false, Ordering::Relaxed);
         self.revision.fetch_add(1, Ordering::Relaxed);
@@ -394,6 +402,18 @@ impl Shared {
     /// The current sample rate (0: not active).
     pub fn sample_rate(&self) -> f64 {
         f64::from_bits(self.sample_rate.load(Ordering::Relaxed))
+    }
+
+    /// Keep this block of output for the editor, if someone is looking. On the audio thread: a busy
+    /// lock or a slow editor loses some of the display, never time.
+    pub fn feed_scope(&self, block: &[f32]) {
+        if self.watch.load(Ordering::Relaxed) <= 0 {
+            return;
+        }
+        if let Ok(mut scope) = self.scope.try_lock() {
+            let room = scope.capacity() - scope.len();
+            scope.extend_from_slice(&block[..block.len().min(room)]);
+        }
     }
 
     /// Someone is looking: collect telemetry for a little longer.
