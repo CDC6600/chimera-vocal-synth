@@ -1435,8 +1435,8 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    teeth. Centroid costs now /z/ 6.8 / 2.2, /s/ 3.2 / 1.5, /dʒ/ 3.2. What is left isn't the source's
    corner, see lead 10.
 2. **/ð v/ too loud.** Half closed by experiment 23: /v z/'s folds part and their voice weakens (level
-   /v/ 0 / 1.1). /ð/ is still −14 / −10 dB against −22 / −21, costing 2.8 / 4.0 (lead 13), and it still
-   blocks lead 3. Experiment 24 has the form that fixes it, blocked by one term.
+   /v/ 0 / 1.1). /ð/ is still −14 / −10 dB against −22 / −21, costing 2.9 / 4.1 (lead 13), and it still
+   blocks lead 3. Experiment 24 has the form that fixes it; experiment 25 moved what blocked it.
 3. **The female source.** Experiment 13: about 5 dB of her 10 dB fricative gap is her vowels, too
    loud for her folds. The glottal pulse is 0.17·k² cm², 0.81 of the male's, where her peak flow is
    about 0.64 of his (Holmberg et al. 1988) and her folds about 0.67 of his length (Hirano). A
@@ -1451,11 +1451,10 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    measured and logged in experiment 22, at −0.09 of score, and level /dʒ/ blocked it. Retry it first:
    that term's limit moved with the kept run. The [h]'s broad noise (top at 10–14 kHz) is gone from /tʃ/;
    nobody has found its source, and stops may still have it.
-6. **Short /dʒ z/, long nasals.** Duration /z/ 4.0 / 3.0, /dʒ/ 3.4 / 3.9, /ŋ/ 3.1 / 1.7, /n/ 2.0 / 2.0.
-   (The judge's "short /k/" was the aligner on near-silent closures; see "A judge correction" below.
-   Read the planner's and the report's numbers together: `phonetics/durations.rs`.) **The nasals come
-   first now:** they block lead 13. With /ð/ read at its true length, male /m/ is 1.07 of a mean phone
-   against the men's 0.89 (experiment 24). I didn't find why nasals read long.
+6. **Short /dʒ z/, long nasals.** Duration /z/ 2.9 / 1.9, /dʒ/ 2.7 / 3.0. The long nasals are mostly closed by
+   experiment 25 (/n/ 0.6 / 0.9, /ŋ/ 1.2 / 0.3, /m/ 0 / 0): the plan was right, and the closure landed early.
+   What is left of them is lead 17. (The judge's "short /k/" was the aligner on near-silent closures; see "A
+   judge correction" below.)
 7. **Bursts.** Female /t k/ are 8–9 dB weak (costs 2.8, 3.2), and may move with lead 3. The male /p/
    is 7 dB loud (2.9).
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
@@ -1486,13 +1485,31 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     −20 to −22. That looks like the stop-like /ð/ of Zhao 2010 (JASA 128, 2009, seen only as a summary in
     a search). Its plan and its form need work first, not just its folds. **Experiment 24 did that:** a
     silent dental closure and a burst after silence, a stop or a fricative matches the speakers, and
-    Whisper hears "The". The patch is in its entry, ready to retry once male duration /m/ has room (lead 6).
+    Whisper hears "The". The patch is in its entry. Male /m/ has room now: on experiment 25 it reads −0.025, and
+    one term breaks, female duration /v/ by +0.52. See lead 16.
 14. **A wider opening for /v z/** (from experiment 23). 0.12–0.14 match the speakers' voicing better, and
     0.14 puts /z/'s low band within about 3 dB of theirs. Only female level /z/ stops it: voicing was
     filling her 10 dB frication gap, so it waits on leads 3 and 4.
 15. **The male /v f θ/ are too bright** (from experiment 23). 4–12 kHz, dB re the stressed vowels: /v/ −24
     (men −40), /f/ −22 (−29), /θ/ −21 (−30). The female ones are within 5 dB of the women's. Not
     investigated: their noise gain or their constriction's jet.
+16. **A stop's closure sounds closed early too** (from experiment 25). The oral area falls under 0.05 cm² a median
+    3–20 ms before the span (male/female: /k/ −20/−19, /b/ −20/−15, /t/ −15/−14, /d/ −15/−10, /g/ −16/−12, /p/ −3/−6). The
+    same delay by place on stops, on top of experiment 25: 1.245 → **1.183**, with level, spectrum and duration terms
+    falling together. It breaks duration /ð/ (+2.38, +3.59) and male burst /p/ (+0.55). With experiment 24's /ð/ patch
+    as well: **1.169**, one break, female level /d/ +0.51. Those are one-off reads, not judged by Whisper or the singer.
+    Largest gain in sight. Experiment 16's `PLACED_CLOSURE_DELAY` was measured on the old timing, so check the "sharp" pop.
+17. **Nasals in clusters** (from experiment 25). /n/ before a voiced stop still reads 80 / 90 ms where speakers read 60 /
+    60, and before a voiceless stop 70 / 70 against 50 / 50. Tanowitz & Beddor (1997, abstract) have nasals about 40 % shorter
+    before a voiceless final stop than a voiced one. The plan's rules don't, and the table's minimum for /n/ (50 ms) stops it short.
+    Its vowel rule looks only at the next consonant, so "bent" and "bend" get the same vowel. I couldn't read what Klatt's own rules do here.
+18. **Phrase-final sonorants** (from experiment 25). Speakers lengthen the sonorant, the synth the vowel. Before a final /l/,
+    the vowel reads 225 / 210 ms against 120 / 100, and the /l/ 60 / 100 against 160 / 165. Before a final /n/, the vowel 120 /
+    120 against 180 / 120 and the /n/ 90 / 100 against 130 / 120. The plan's ×1.4 for final sonorants moves little on so narrow a range
+    as /n/'s (60, 50). The final /ɹ/ is nearer since experiment 25: vowel 140 / 140 against 120 / 90, /ɹ/ 130 / 140 against 160 / 170.
+19. **A closure's latency follows its travel** (from experiments 17 and 25). The fixed delay is right on the median only: /ɑnɑ/ lands about 23
+    ms late, /inu/ 12 early. A latency that follows the distance to the target would fix both ends, but it needs a planner that knows
+    the articulators' position there. A vowel before an /ɹ/ that opens the next syllable also still reads 110 / 120 ms against 70 / 60.
 
 ### 21. The teeth source's band follows the jet at the teeth, with its power held (kept)
 
@@ -1997,3 +2014,95 @@ use the clean render.
   - On the retry: the male burst (is a dental closure's seal weaker, or its pressure lower?), and /ð/ after a vowel, which wants a shorter, deeper dip. Both
     are terms already near zero, so they are for the ear.
   - Don't retry the context rule's variants above for this break: it doesn't move.
+
+### 25. A nasal's span starts where it sounds closed, and a vowel and its coda /ɹ/ share Klatt's one nucleus span (kept)
+
+- Hypothesis (batch 3's lead 6): find what MFA reads in a long nasal first. Measured before changing anything, the training tokens.
+  **The plan isn't why they read long.** /n/ is planned at 56–62 ms, below the speakers in most positions, and Klatt's own sample output gives
+  N 50–60, M 70. Syllabic nasals aren't separate here: CMUdict gives them as /ən/.
+
+  | /n/, MFA's ms, female / male | plan | speakers | before | after |
+  |---|---|---|---|---|
+  | next word starts with a consonant | 56 | 70 / 70 | 80 / 80 | 70 / 75 |
+  | before a voiced stop, "bend" | 56 | 60 / 60 | 100 / 100 | 80 / 90 |
+  | before a vowel | 58 | 70 / 70 | 80 / 80 | 70 / 80 |
+  | before a voiceless stop, "paint" | 56 | 50 / 50 | 80 / 90 | 70 / 70 |
+  | before a pause | 62 | 130 / 120 | 100 / 110 | 90 / 100 |
+  | next word starts with a vowel | 58 | 60 / 60 | 90 / 80 | 80 / 80 |
+  | before a voiced fricative | 56 | 90 / 100 | 120 / 110 | 100 / 100 |
+  | before a voiceless fricative | 56 | 70 / 70 | 80 / 90 | 60 / 70 |
+
+  - **What the gestures do.** A probe on the telemetry over 180 male sentences, medians, ms re the plan's span (start for the closure and the port opening,
+    end for the rest). "Closure" is the oral area first under 0.05 cm²:
+
+    | tokens | closure | release | port opens | port seals | MFA's start, end | MFA's ms |
+    |---|---|---|---|---|---|---|
+    | /n/ vowel–vowel (38) | −16 | +1 | −38 | +29 | −17, +8 | 90 |
+    | /n/ vowel–voiced stop (74) | −21 | — | −37 | +30 | −24, +21 | 100 |
+    | /n/ vowel–voiceless stop (30) | −13 | — | −37 | +29 | −25, +3 | 90 |
+    | /m/ vowel–vowel (21) | −13 | +3 | −37 | +30 | −16, +14 | 100 |
+    | /ŋ/ vowel–voiceless stop (13) | −20 | — | −37 | +30 | −18, +7 | 100 |
+
+    So MFA's start is about the area under 0.05 cm², and its end the release, or the port's seal where the voice goes on behind a closure. Contact itself lands
+    near the span (area under 0.001: /m/ −2 / +5, /n/ −8 / −3, /ŋ/ −9 / −7, male / female), so `oral_gestures_into`'s latencies do what they were measured
+    for. But the sound has left for the nose 10 ms before contact. **Over 60 sentences per body, under 0.05 cm²: /m/ −13 / −7, /n/ −18 / −14, /ŋ/ −20 / −19.**
+    Klatt's durations are "acoustically defined", so the span should start there.
+  - **The velum.** Its gesture isn't compensated for its lag, so the port seals 29 ms after the span where the comment said "by the end of the nasal". It looks like
+    half the cause and it isn't. Below 1.2 kHz through /nd/, dB re the stressed vowels, ms re the end of MFA's /d/:
+
+    | | −80 | −70 | −60 | −50 | −40 | −30 | −20 | −10 | 0 |
+    |---|---|---|---|---|---|---|---|---|---|
+    | women | −6 | −6 | −7 | −7 | −9 | −12 | −17 | −18 | −21 |
+    | female synth | −9 | −9 | −9 | −12 | −18 | −24 | −26 | −25 | −28 |
+    | female, sealed at the span's end | −11 | −15 | −23 | −26 | −29 | −32 | −30 | −28 | −30 |
+    | men | −7 | −8 | −9 | −9 | −11 | −13 | −17 | −20 | −22 |
+    | male synth | −7 | −7 | −7 | −9 | −17 | −24 | −22 | −19 | −18 |
+    | male, sealed at the span's end | −8 | −12 | −19 | −21 | −25 | −27 | −25 | −22 | −23 |
+
+    Speakers hold the murmur up to 30–40 ms before the release, later than the synth does already. By this measure the seal is 10–20 ms early in /nd/, not late. And after a
+    nasal their /d/ is loud (level −13.5 / −15.5 against −19.5 / −19.4 after a vowel; synth −24.1 / −19.6), which goes the same way. So what is long in /nd/ is the time before.
+  - **Vowels before nasals pay for it.** They read 100 / 90 ms against the speakers' 110 / 100 before /n/. Aiming the closure later gives them the time.
+  - **What that trips over.** "Stressed vowel before sonorant" pools nasals and liquids. Before aiming later it read 1.34 / 1.26 against 1.19 / 1.12, the furthest off being vowels before /ɹ/:
+
+    | stressed vowel before a coda /ɹ/, ms | vowel | /ɹ/ |
+    |---|---|---|
+    | speakers | 60 / 65 | 80 / 80 |
+    | before | 120 / 120 | 100 / 90 |
+    | after | 70 / 60 | 90 / 90 |
+
+    The pair is 70 ms long. **Klatt 1979: "Vowel+/R/ syllables are transcribed with the special vowel nuclei /IR/ ("beer"), /ER/ ("bear"), /AR/ ("bar"), /OR/ ("boar"), and /UR/ ("pure")."**
+    The G2P gives two segments, so the pair got the vowel's whole span and the /ɹ/'s on top.
+  - **Sources, what I could confirm.**
+    - Klatt 1979 (ICPhS, "Synthesis by rule of segmental durations in English sentences"): I read its first two pages as extracted text, including the sentences above and the sample output. **The duration table is on a scanned page I couldn't read**, so the nuclei's own values aren't used: the vowel's span stands in for the nucleus's.
+    - Tanowitz & Beddor 1997 (ASA abstract, through a page-reading tool): vowels about 20 % and nasals about 40 % shorter before voiceless final stops than voiced ones, nasalization about 80 % of the vowel in both.
+    - Beddor 2007 (ICPhS, extracted text): an earlier onset and offset of the velum gesture before voiceless stops; oral closure and nasal durations vary inversely.
+    - Byrd, Tobin, Bresch & Narayanan 2009 (J. Phonetics 37, extracted text): near synchrony of velum and tip in onsets (26 and about 4 ms apart for the two subjects I read), the velum plateau first in codas (62 and 90 ms for those two), velum plateaus 118–275 ms. The synth's port is open about 120 ms, and leads the same 37 ms for both. They don't give the raising against the oral release, and I found no English number for it.
+    - Krakow: only through Byrd and a search's summary. Klatt 1976, Crystal & House 1988 and Chen 2000: **not read, nothing here rests on them.**
+- Change: two, and I'd have kept them apart. `planner.rs`: `nasal_closure_delay(place)`, aiming a nasal's closure later by what was measured, rounded (lips 10 ms, tip 15, dorsum 20), and no later than 30 ms before its end, as a stop's. `durations.rs`: a vowel before an /ɹ/ in its word with no vowel after gives the /ɹ/'s span back, at least 40 ms left (Klatt's lowest vowel minimum); explicit durations, so sung ones, are untouched. Comments on the velum and on `oral_gestures` corrected. New `tests/nasal_spans.rs`: the median nasal in a phrase closes within 7 ms of its span (on the old timing it fails, with a median of −19 in the male voice), and vowel + coda /ɹ/ = the vowel's span. **Why together:** neither passes alone, below, and neither is a value tuned to a term.
+
+  | form (speakers' training score from 1.287; F = female, M = male; breaks only) | score | verdict |
+  |---|---|---|
+  | the port sealed at the span's end | 1.273 | WORSE: F level d +0.55, burst d +0.51; M level d +0.80, duration b +0.75 |
+  | closure 20 ms later | 1.249 | WORSE: vowel before sonorant F +0.95, M +0.80; F duration h +0.73; M duration dʒ +0.67 |
+  | closure 15 ms later | 1.255 | WORSE: vowel before sonorant F +0.76, M +0.63; M duration dʒ +0.92 |
+  | closure 10 ms later | 1.278 | WORSE: vowel before sonorant F +0.65; M duration dʒ +0.52 |
+  | the nucleus alone | 1.296 | WORSE: M duration m +0.51 (its mean phone falls about 1.5 %) |
+  | the nucleus, closure 15 ms later | 1.235 | WORSE: M level p +0.57 |
+  | **the nucleus, closure by place** | **1.245** | **BETTER** |
+
+  **Read this before trusting the last two rows.** They differ by /m/ 5 ms earlier and /ŋ/ 5 ms later. I measured the by-place values before running either. M level /p/ is token flips, not a shift: its medians by context barely move, and the jump is single tokens MFA reads at 30–40 ms or at 90–100. It could flip back on any change. /dʒ/'s and /h/'s moves in the other rows look like medians crossing a 10 ms step too, but I only looked at /h/'s and /ð/'s tokens.
+- Speakers: 1.287 → **1.245** (training, **BETTER**), 1.432 → 1.381 (held-out). Female 1.918 → 1.856, male 0.657 → 0.635.
+  - Groups, female: level 2.12 → 2.02, sibilants 2.86 → 2.92, timing 0.77 → 0.63. Male: level 0.64 → 0.66, sibilants 0.80 → 0.81, timing 0.53 → 0.43. Diagnostics, female: formants 1.25 → 1.24, voice 0.66 → 0.65, voicing 0.30 → 0.33, intonation 1.27 → 1.25, spectrum 1.31. Male: voice 1.16 → 1.15, voicing 0.47 → 0.48, intonation 0.85 → 0.88, spectrum 1.64, formants 1.04.
+  - Down: duration /ŋ/ 3.21 → 1.17, 1.50 → 0.26; /n/ 1.78 → 0.61, 2.10 → 0.88; female /m/ 0.30 → 0; vowel before sonorant 0.20 → 0.06, 0.20 → 0 (1.32 / 1.17); male /s/ 1.13 → 0.41; female burst /d/ 3.57 → 2.77, level /p/ 1.16 → 0.76, loudest tenth 1.75 → 1.42; male level /t/ 0.62 → 0.20.
+  - Up: male stressed final vowel 1.09 → 1.46, burst /d/ 0 → 0.36, level /p/ 0.91 → 1.31; female duration /f/ 1.07 → 1.24, /ɹ/ 1.03 → 1.15; male /ð/ 0.22 → 0.40, /z/ 1.76 → 1.91. The durations among these are the mean phone falling about 1.5 % (85.0 → 83.6, 84.6 → 83.3 ms), as a shorter /ɹ/ pair takes time out of a sentence. Level /p/ is the token flips below the table. I didn't look into the bursts.
+  - Nearly right now: /m/ 0.90 / 0.93 of a mean phone (0.86 / 0.89), vowel before coda /ɹ/ 0.77 / 0.77 (0.76 / 0.74). Vowels before nasals overshoot a little, 120 / 100 ms before /n/ (110 / 100), and read 1.35 / 1.23 (1.25 / 1.14).
+- Whisper: 37.75 → 36.75 % (training; baseline 36.75, NO CLEAR CHANGE), 39.33 → 42.0 % (held-out; baseline 44.33). The held-out rise from the best run is a little past the ±2 of a small change. I didn't look into it, by the rules.
+- Singer: 0.587 → 0.584 (training; baseline 0.587, NO CLEAR CHANGE), 0.805 → 0.827 (held-out; baseline 0.811). Guards hold: 0 notes off time, 0 dropped gestures, note MCD 8.599 dB (guard 8.714), envelope correlation 0.812, pitch error 4.82 cents. Terms: level 0–0.5 kHz 1.244 → 1.289, 4–8 kHz 0.54 → 0.57, aperiodicity 0.051 → 0.025. Only the nasal's delay reaches singing.
+- Speed: `os=2` 18.4 % (baseline's file 24.7 %, at another load). Plan timing only.
+- Tests: all pass with the fixtures blessed twice (117 cargo, 2 ignored; 30 bun; typecheck), then restored. `consonant_artifacts` is among them. Nobody has listened to it.
+- Verdict: kept. It's two changes in one experiment, against the rule, because neither can pass alone (README, "order matters"): the owner may want to hear them separately. About an hour.
+- Commit: a5b6176.
+- Next:
+  - **The stops, with /ð/ (lead 16).** One-off reads on top of this, not kept: experiment 24's patch alone 1.220, one break, F duration /v/ +0.52 (it needs 0.02 less; experiment 24 saw /v/ before /ð/ read shorter, and I didn't check that here). The same delay on stops alone 1.183, breaking duration /ð/ (+2.38, +3.59) and M burst /p/ (+0.55). **Both 1.169, one break, F level /d/ +0.51.** They look like one experiment, for the same reason this one is two: try them together first, and take the /ð/ patch's form from experiment 24's entry. In that read the stop-like /ð/ took the delay too, at 15 ms.
+  - Don't move the port's seal for /nd/. It may do for /n/ before a vowel or fricative, where nothing holds it open: before a voiced fricative /n/ still reads 100 / 100 ms and the port is open 29 ms into the fricative. I didn't try it. Whether the seal's lag in a following vowel is heard, nobody has checked.
+  - Leads 17, 18 and 19 are what's left of the long nasals and the sonorants.
