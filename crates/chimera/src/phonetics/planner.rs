@@ -21,6 +21,17 @@ pub const EXHALE_LABEL: &str = "exhale";
 /// when a sung phrase's breath reaches full drive, after the plan start (its first segment starts at 0.06)
 const BREATH_SUNG_AT: f64 = 0.06;
 
+/// How far a voiced fricative's folds part (cm², scaled with the body in the voice). Frication and
+/// voicing share the lung pressure, which takes a glottis about as wide as the constriction
+/// (Stevens 1971; Elie & Laprie's "regime B"). Here that is a mean glottal area of about 0.13 cm²,
+/// through constrictions of 0.10-0.18. The pressure behind the constriction then rises and the
+/// voicing weakens by itself, most in /z/, whose constriction is the narrowest. 0.12-0.14 match the
+/// TSP speakers' voicing better; female /z/ can't take them yet (hill-climb log, experiment 23).
+const VOICED_FRICATIVE_OPENING: f64 = 0.09;
+/// /ð/ keeps a small opening for now: with the wider one its first-word voice weakens, MFA reads the
+/// constriction's 70-110 ms where speakers' /ð/ reads 40-50, and Whisper hears "The" as "with a".
+const DH_OPENING: f64 = 0.035;
+
 const VOWEL_KEYS: [ArticKey; 9] = [ArticKey::TbX, ArticKey::TbY, ArticKey::Jaw, ArticKey::LipAp, ArticKey::LipProt, ArticKey::LipWidth, ArticKey::Root, ArticKey::Larynx, ArticKey::TtCurl];
 
 /// One calibrated vowel of `vowelTargets.generated.json`.
@@ -324,7 +335,10 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
                 gestures.push(Gesture::new(t0 - 0.015, t1 + 0.005, 0.03, 0.03, 6.0, one(ControlKey::ABDUCTION, 0.3)).label("voiceless"));
             }
         } else if def.manner == Manner::Fricative {
-            gestures.push(Gesture::new(t0, t1, 0.03, 0.03, 3.0, one(ControlKey::ABDUCTION, 0.035)).label("voiced frication"));
+            // the folds start to part when a voiceless fricative's do, and close as the constriction
+            // opens (about 20 ms after t1, for both)
+            let opening = if def.ipa == "ð" { DH_OPENING } else { VOICED_FRICATIVE_OPENING };
+            gestures.push(Gesture::new(t0 - 0.015, t1, 0.03, 0.03, 3.0, one(ControlKey::ABDUCTION, opening)).label("voiced frication"));
         }
     }
     let open_end = o.open_end == Some(true);
