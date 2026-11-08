@@ -582,6 +582,8 @@ pub struct Core {
     /// the sequencer is following the host's transport
     following: bool,
     follow_host: bool,
+    /// the host is playing, as of this block: what was queued before it starts is for its timeline
+    host_playing: bool,
     /// the user's tempo: following the host overwrites the sequencer's
     beat_bpm: f64,
     mic_on: bool,
@@ -641,6 +643,7 @@ impl Core {
             wheel_bend: 1.0,
             following: false,
             follow_host: settings.beat.follow,
+            host_playing: false,
             beat_bpm: settings.beat.bpm,
             mic_on: settings.beat.mic,
             close_mic: CloseMic::new(sample_rate),
@@ -757,7 +760,7 @@ impl Core {
     /// When a sound asked for now should land: `BEAT_LATENCY` on, while the host's timeline is
     /// running and it compensates; otherwise as soon as the mouth can make it.
     fn beat_time(&mut self, id: &str) -> f64 {
-        let wait = if self.transport.playing { BEAT_LATENCY } else { self.engine.beat_lead(id) };
+        let wait = if self.host_playing { BEAT_LATENCY } else { self.engine.beat_lead(id) };
         self.engine.clock() + wait
     }
 
@@ -840,6 +843,14 @@ impl Core {
         self.following = false;
         self.engine.beat_stop_following();
         self.engine.set_beat_tempo(Some(self.beat_bpm), None);
+        self.hum_again();
+    }
+
+    /// Stopping the sequencer clears the score, a hum still held with it.
+    fn hum_again(&mut self) {
+        if let Some(h) = self.hums.last().copied() {
+            self.start_hum(h);
+        }
     }
 
     fn mark_spoken(&mut self, line: i32, generation: u32, t0: f64) {
@@ -918,6 +929,8 @@ impl Core {
             if self.mode == Mode::Beatbox {
                 self.stop_following();
                 self.engine.set_beat_playing(false);
+                // a pad's hit may still be on its way, with no sequencer to have cancelled it
+                self.engine.stop_speech();
             }
             self.mode = mode;
             self.hold = false;
@@ -978,7 +991,11 @@ impl Core {
             && self.mode == Mode::Beatbox
             && !self.following
         {
+            let was = self.engine.beat().playing;
             self.engine.set_beat_playing(on);
+            if was && !on {
+                self.hum_again();
+            }
         }
         let Pending { hits, .. } = &mut *p;
         for step in hits.drain(..) {
@@ -1036,6 +1053,7 @@ impl Core {
 
     /// Start of a block: what the editor sent, the host parameters, the transport.
     pub fn begin_block(&mut self, params: &VoiceParams, transport: Transport, shared: &Shared) {
+        self.host_playing = transport.playing;
         self.intake(shared);
         if *params != self.params {
             self.params = *params;

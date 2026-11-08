@@ -133,10 +133,9 @@ let spokenSerial = -1;
 export async function followSpoken(serial: number, line: number, generation: number, t0: number): Promise<void> {
   if (serial === spokenSerial) return;
   spokenSerial = serial;
-  if (line === NOT_SPEAKING) {
-    if (current) cutId = current.id;
-    return;
-  }
+  // what was sounding has stopped, whether or not the reply below is usable
+  if (current) cutId = current.id;
+  if (line === NOT_SPEAKING) return;
   const r = await fetch(line === SAYING_PAD ? "/speech/pad" : `/speech/${line}`, { cache: "no-store" });
   if (!r.ok) return;
   const got = (await r.json()) as { generation: number; phrases: Phrase[]; plan: Plan };

@@ -3,7 +3,7 @@ use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
 use chimera::engine::Engine;
 use chimera::control::beat_player::BeatPlayer;
 use chimera::phonetics::Syllable;
-use chimera::phonetics::beatbox::{BEAT_SOUNDS, parse_beat};
+use chimera::phonetics::beatbox::{BEAT_SOUNDS, BeatStep, parse_beat};
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera_plugin::core::{BEAT_LATENCY, BeatSettings, Core, DEFAULT_LYRICS, Event, Mode, NOT_SPEAKING, Prepared, SAYING_PAD, Settings, Shared, Transport, UiNote, VoiceParams, drum_pad};
 use chimera_plugin::g2p;
@@ -1086,4 +1086,82 @@ fn entering_beatbox_sets_its_posture_in_the_same_command() {
     assert_eq!((beat.steps.len(), beat.preset.as_deref(), beat.bpm, beat.swing, beat.mic, beat.follow), (3, Some("Mine"), 99.0, 0.2, false, false));
     c.begin_block(&params.voice(), Transport::default(), &shared);
     assert_eq!((c.engine().beat().steps().len(), c.engine().beat().bpm, c.engine().beat().swing), (3, 99.0, 0.2));
+}
+
+// Found by code review: transitions in Beatbox.
+
+#[test]
+fn leaving_beatbox_takes_a_pads_hit_with_it() {
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    // stopped, with no sequencer running to cancel it
+    run(&mut c, &shared, &[(0, on(36))], 16, |_| 16);
+    assert!(c.engine().score().size() > 0, "a kick on its way");
+    shared.edit(|p| p.mode = Some(Mode::Play));
+    run(&mut c, &shared, &[], 16, |_| 16);
+    assert_eq!(c.engine().score().size(), 0, "it mustn't sound in the next mode");
+}
+
+#[test]
+fn stopping_the_beat_keeps_a_held_hum() {
+    let c2 = chimera::math::midi_to_hz(36.0);
+    let hums_c2 = |c: &Core| {
+        let got = hum_pitches(c);
+        got.len() == 1 && (got[0] - c2).abs() < 1e-6
+    };
+    // turning Follow off while the host plays
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    host.block(&mut c, &shared, &mut [0.0; 256], &[on(60)]);
+    assert!(hums_c2(&c), "{:?}", hum_pitches(&c));
+    shared.edit(|p| p.follow_host = Some(false));
+    host.block(&mut c, &shared, &mut [0.0; 256], &[]);
+    assert!(hums_c2(&c), "still humming: {:?}", hum_pitches(&c));
+    // the Stop button, with the host stopped
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    shared.edit(|p| p.beat_playing = Some(true));
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert!(c.engine().beat().playing && hums_c2(&c));
+    shared.edit(|p| p.beat_playing = Some(false));
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert!(!c.engine().beat().playing);
+    assert!(hums_c2(&c), "still humming: {:?}", hum_pitches(&c));
+    // but the host stopping lifts every key, as in every mode
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    host.block(&mut c, &shared, &mut [0.0; 256], &[on(60)]);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert!(hum_pitches(&c).is_empty());
+}
+
+#[test]
+fn a_pad_pressed_just_before_the_host_starts_is_for_its_timeline() {
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    run(&mut c, &shared, &[], 16, |_| 16);
+    shared.ui_hit(BeatStep::new("B"));
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    host.block(&mut c, &shared, &mut [0.0; 16], &[]);
+    let start = c.engine().score().gestures().iter().map(|g| g.t0 - g.ramp_in).fold(f64::INFINITY, f64::min) - c.engine().clock();
+    let lead = BeatPlayer::lead_in("B", BodyMix::MALE);
+    assert!((start - (BEAT_LATENCY - lead)).abs() < 0.01, "it lands on the grid: its set-up starts {} from now, got {start}", BEAT_LATENCY - lead);
+}
+
+/// A host answers a latency change by restarting the plugin: nothing but the page's edits is lost.
+#[test]
+fn a_restart_in_beatbox_comes_back_the_same() {
+    use chimera_plugin::ChimeraParams;
+    let params = ChimeraParams::default();
+    let shared = Shared::default();
+    params.settings.write().unwrap().mode = Mode::Beatbox;
+    params.settings.write().unwrap().beat = BeatSettings { steps: parse_beat("B . m:43 ."), bpm: 77.0, swing: 0.3, preset: None, mic: false, follow: true };
+    let rev = shared.revision.load(Ordering::Relaxed);
+    let c = chimera_plugin::rebuild(&params, &shared, params.voice(), FS).unwrap();
+    assert_ne!(shared.revision.load(Ordering::Relaxed), rev, "the page will read the state again");
+    assert_eq!(c.latency_samples(), (BEAT_LATENCY * FS).round() as u32);
+    assert_eq!((c.engine().beat().steps().len(), c.engine().beat().bpm, c.engine().beat().swing), (4, 77.0, 0.3));
+    assert!(!c.engine().beat().playing && !c.engine().beat().following());
 }

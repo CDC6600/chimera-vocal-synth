@@ -315,8 +315,10 @@ masks don't apply in Beatbox: held hums are kept per owner, as sounding pitches.
 
 While the host is playing, a note's hit goes `BEAT_LATENCY` after the note, on the grid. While it's
 stopped, it goes as soon as the mouth can make it (the website's `beat_hit`), because someone is
-auditioning. The hum is the same sound the sequencer uses, built open-ended with a tag; its release is
-`GestureScore::release` at the matching time, and it's monophonic, falling back to the newest key held.
+auditioning. Which of these applies comes from the block's own transport, so a pad queued just before
+the host starts is already on its timeline. The hum is the same sound the sequencer uses, built open-ended
+with a tag; its release is `GestureScore::release` at the matching time, and it's monophonic, falling back
+to the newest key held. Stopping the sequencer clears the score, so a hum still held starts again.
 
 **Close mic.** The website's chain is Web Audio nodes (low shelf +9 dB at 120 Hz, peak +3 dB at 3.5 kHz,
 compressor at -28 dB, 5:1, make-up), which a plugin doesn't have, and much of a beatbox's weight comes
