@@ -41,9 +41,9 @@
   --amber: #ffb340;
   --glow-blue: 0 0 1.5px rgba(79, 182, 242, 0.9), 0 0 6px rgba(79, 182, 242, 0.4);
   /* older names, remapped so screens not yet redrawn sit on black in blue and amber */
-  --black: #020406;
-  --console: #0d171f;
-  --inset: #182833;
+  --black: #000000;
+  --console: #000000;
+  --inset: #000000;
   --line: var(--frame);
   --text: var(--blue);
   --text-dim: var(--blue-mid);
@@ -252,15 +252,6 @@ button.primary.large {
   gap: 4px;
   font-size: 13px;
   font-stretch: 87%;
-
-/* Keep UI copy brighter without recolouring vector strokes or borders. */
-.text-colors :is(button:not(.primary), p, h1, h2, h3, h4, label, output, a, .screen-title) {
-  color: var(--text);
-}
-
-.text-colors :is(.tagline, .load, .volume, .screen-sub, .dim, .midi-status, .seq-label, .creature-blurb, .duet-time, .duet-msg) {
-  color: var(--text-dim);
-}
   color: var(--text-dim);
 }
 
@@ -1246,11 +1237,12 @@ body {
 
 .segmented button:hover {
   color: var(--text);
+  text-shadow: var(--glow-blue);
 }
 
 .segmented button.on {
   background: transparent;
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue);
   box-shadow: 0 0 5px rgba(79, 182, 242, 0.35), inset 0 0 4px rgba(79, 182, 242, 0.15);
   text-shadow: var(--glow-blue);
@@ -1315,7 +1307,7 @@ body {
 }
 
 .repo-link:hover {
-  color: var(--blue);
+  color: var(--text);
   filter: drop-shadow(0 0 3px rgba(79, 182, 242, 0.7));
 }
 
@@ -1339,7 +1331,7 @@ button.ghost,
 }
 
 button.primary {
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue);
   box-shadow: 0 0 5px rgba(79, 182, 242, 0.35), inset 0 0 4px rgba(79, 182, 242, 0.15);
   text-shadow: var(--glow-blue);
@@ -1352,13 +1344,13 @@ button.primary.large {
 
 button.ghost:hover,
 .chip:hover {
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue-dim);
 }
 
 .chip.on,
 .chip[aria-pressed="true"] {
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue);
   box-shadow: 0 0 5px rgba(79, 182, 242, 0.35), inset 0 0 4px rgba(79, 182, 242, 0.15);
   text-shadow: var(--glow-blue);
@@ -1424,7 +1416,7 @@ button.ghost:hover,
   font-weight: 300;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--blue);
+  color: var(--text);
   text-shadow: var(--glow-blue);
 }
 
@@ -1516,7 +1508,7 @@ button.ghost:hover,
 }
 
 .screen-tools .toggle input:checked + span {
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue-dim);
   text-shadow: var(--glow-blue);
 }
@@ -1585,7 +1577,7 @@ button.ghost:hover,
 }
 
 .enc-tab.on {
-  color: var(--blue);
+  color: var(--text);
   border-color: var(--blue);
   text-shadow: var(--glow-blue);
 }
@@ -2192,7 +2184,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .syl.sung {
-  color: var(--text-dim);
+  color: var(--blue-mid);
   border-color: rgba(19, 57, 84, 0.6);
 }
 
@@ -2690,7 +2682,7 @@ input[type="range"]::-moz-range-thumb {
 
 .calls-body .call:hover {
   border-color: var(--blue-dim);
-  color: var(--blue);
+  color: var(--text);
 }
 
 .calls-body .call-name {
@@ -2713,7 +2705,7 @@ input[type="range"]::-moz-range-thumb {
 
 .calls-body .call.sustain.on {
   border-color: var(--blue);
-  color: var(--blue);
+  color: var(--text);
   background: transparent;
 }
 

@@ -50,7 +50,6 @@ export function ScoreView() {
       ctx.fillStyle = "#000";
       ctx.fillRect(left, cy - bh / 2, right - left, bh);
       labelBlock(ctx, msg, left + 8, cy, right - left - 16, { size: 10, color: TEXT.secondary, ls: 0.12 });
-        labelBlock(ctx, msg, left + 8, cy, right - left - 16, { size: 10, color: TEXT.secondary, ls: 0.12 });
       return;
     }
     const plan = sp.plan;
@@ -99,7 +98,6 @@ export function ScoreView() {
       lastRight = x + 6;
       const on = now >= s.t0 && now < s.t1;
       seg(ctx, X(s.t0), bottom + 2, X(s.t0), bottom + 6, V.blueDim, 1);
-      label(ctx, s.ipa, x, h - 8, { size: 12, color: on ? V.white : V.blue, align: "center", ls: 0 });
       label(ctx, s.ipa, x, h - 8, { size: 12, color: on ? V.white : TEXT.primary, align: "center", ls: 0 });
     }
     // playhead

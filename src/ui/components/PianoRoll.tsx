@@ -70,7 +70,6 @@ export function PianoRoll() {
       if (pc === 0) {
         seg(ctx, left, yc + rowH / 2, w, yc + rowH / 2, V.frame, 1);
         label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: 9, color: TEXT.secondary, ls: 0.1 });
-        label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: 9, color: TEXT.secondary, ls: 0.1 });
       }
     }
     beam(ctx, dotted, V.frame, 1, { dash: [1, 5] });
@@ -94,7 +93,6 @@ export function PianoRoll() {
         ctx.restore();
       }
       beam(ctx, r, V.green, live ? 1.6 : 1.2, { alpha: live ? 1 : future ? 0.38 : 0.62, hot: live });
-      if (n.text && n.text !== "~") label(ctx, n.text.toUpperCase(), x0 + 1, yc - barH / 2 - 4, { size: 10, color: live ? V.white : V.blueMid, ls: 0.12, alpha: future ? 0.6 : 1 });
       if (n.text && n.text !== "~") label(ctx, n.text.toUpperCase(), x0 + 1, yc - barH / 2 - 4, { size: 10, color: live ? V.white : TEXT.secondary, ls: 0.12, alpha: future ? 0.6 : 1 });
     }
 

@@ -25,7 +25,6 @@ export function CreatureTubes() {
       const data = tele.tubes[l.tube];
       const y = 3 + laneH * (li + 0.5);
       label(ctx, (l.label ?? l.tube).toUpperCase(), 14, y + 3, { size: 9, color: TEXT.secondary, ls: 0.16 });
-        label(ctx, (l.label ?? l.tube).toUpperCase(), 14, y + 3, { size: 9, color: TEXT.secondary, ls: 0.16 });
       const n = data.areas.length;
       const x0 = labelW, x1 = w - 14;
       const dx = (x1 - x0) / n;

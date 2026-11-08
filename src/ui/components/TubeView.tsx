@@ -60,8 +60,8 @@ export function TubeView() {
       p.lineTo(jx + nLen, nTop + off);
       beam(ctx, p, nc, 1, { dash });
     }
-    label(ctx, "NOSE", jx + nLen + 6, nTop + 3, { size: 9, color: nc, ls: 0.16 });
-    label(ctx, open ? `VELUM OPEN ${velum.toFixed(2)} CM²` : "VELUM SHUT", jx, nTop - 12, { size: 9, color: nc, ls: 0.16, align: "center" });
+    label(ctx, "NOSE", jx + nLen + 6, nTop + 3, { size: 9, color: TEXT.secondary, ls: 0.16 });
+    label(ctx, open ? `VELUM OPEN ${velum.toFixed(2)} CM²` : "VELUM SHUT", jx, nTop - 12, { size: 9, color: TEXT.secondary, ls: 0.16, align: "center" });
 
     // silhouette and rings
     const top: Pt[] = [[x0, axisY - 3], ...secs.map((q) => [q.x, axisY - q.r] as Pt), [x1, axisY - secs[secs.length - 1].r]];

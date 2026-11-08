@@ -2,7 +2,7 @@
  * The face screen's readouts: formants and info lines in one corner, and four OP-1 style slots
  * (big numerals in each control's colour). Shared by the 2D and 3D anatomy views.
  */
-import { V } from "../colors.ts";
+import { TEXT, V } from "../colors.ts";
 import { dot, ipaGlyph, label } from "./vector.ts";
 
 /** an OP-1 style readout in the space under the chin */
@@ -40,7 +40,7 @@ export function drawReadouts(ctx: CanvasRenderingContext2D, layout: ReadoutLayou
     y += 110;
   }
   for (const s of info) {
-    label(ctx, s, fx, y, { size: 10, color: V.blueMid, align: "right", ls: 0.14 });
+    label(ctx, s, fx, y, { size: 10, color: TEXT.secondary, align: "right", ls: 0.14 });
     y += 16;
   }
   if (!slots.length) return;
@@ -69,8 +69,8 @@ function drawReadoutsCompact(ctx: CanvasRenderingContext2D, layout: ReadoutLayou
       label(ctx, String(Math.round(formants[i])), 12 + i * cw + 26, 18, { size: 13, color: V.amber, ls: 0.06 });
     });
   }
-  label(ctx, info.slice(0, 2).join("   "), 12, 36, { size: 9, color: V.blueMid, ls: 0.12 });
-  if (info.length > 2) label(ctx, info.slice(2).join("   "), 12, 50, { size: 9, color: V.blueMid, ls: 0.12 });
+  label(ctx, info.slice(0, 2).join("   "), 12, 36, { size: 9, color: TEXT.secondary, ls: 0.12 });
+  if (info.length > 2) label(ctx, info.slice(2).join("   "), 12, 50, { size: 9, color: TEXT.secondary, ls: 0.12 });
   const four = slots.slice(0, 4);
   if (!four.length) return;
   const cw = (w - 24) / four.length, y0 = h - 82;
