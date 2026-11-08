@@ -35,3 +35,8 @@ unzip -q pluginval_macOS.zip
 # --skip-gui-tests: a runner has no display session to open the editor in
 ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --validate "$bundled/CHIMERA.vst3"
 echo "::endgroup::"
+
+echo "::group::REAPER"
+# doesn't fail the run yet: update.sh installs the newest passing build, and this is still new
+"$root/crates/chimera-plugin/macos/host-test.sh" || echo "::warning::the REAPER test failed: see this step's log"
+echo "::endgroup::"

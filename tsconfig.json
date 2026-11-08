@@ -15,5 +15,5 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["src", "tools", "tests"]
+  "include": ["src", "tools", "tests", "crates/chimera-plugin/host-test"]
 }
