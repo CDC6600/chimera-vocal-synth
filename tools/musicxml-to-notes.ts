@@ -239,7 +239,8 @@ for (const w of words) {
   const n = count(word);
   const inner = w.holds.slice(0, -1).some((h) => h > 0);
   if (n > k || n === 0) {
-    note(errors, `"${word}": ${n} syllable(s) on ${k} note(s)`, w.measure);
+    // one entry per word whatever its case: --spell matches without case too
+    note(errors, `"${word.toLowerCase()}": ${n} syllable(s) on ${k} note(s)`, w.measure);
     continue;
   }
   if (inner && n === k && w.pieces.every((p) => count(spell.get(p.toLowerCase()) ?? p) === 1)) {
@@ -248,8 +249,8 @@ for (const w of words) {
     w.pieces.forEach((p, i) => tokens.push(` ${spell.get(p.toLowerCase()) ?? p}`, ...Array.from({ length: w.holds[i] }, () => " -")));
     continue;
   }
-  if (inner) note(warnings, `"${word}" is held at its end, not between its syllables`, w.measure);
-  if (n < k) note(warnings, `"${word}" has ${n} syllable(s) on ${k} notes: its last vowel holds over the rest`, w.measure);
+  if (inner) note(warnings, `"${word.toLowerCase()}" is held at its end, not between its syllables`, w.measure);
+  if (n < k) note(warnings, `"${word.toLowerCase()}" has ${n} syllable(s) on ${k} notes: its last vowel holds over the rest`, w.measure);
   const holds = w.holds.reduce((a, b) => a + b, 0) + (k - n);
   tokens.push(` ${word}`, ...Array.from({ length: holds }, () => " -"));
 }
