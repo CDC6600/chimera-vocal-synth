@@ -39,7 +39,7 @@ structural fixes, not a judge loosened until a change passes. So:
 - **Targets**, from the baseline's report (details in log.md, "Batch 3 baseline"):
   1. The female sibilants: /ʃ tʃ/ 16–17 dB too quiet, /s z/ centroids at 4.0–4.7 kHz where
      women's are 7.1–7.4.
-  2. Closures and affricates too short (/k/, /dʒ/, /z/), nasals too long.
+  2. /dʒ/ and /z/ too short, nasals too long.
   3. /ð v/ 7–11 dB too loud in both voices.
   4. Anything else with a large cost in `out/hill/best/tsp/report.md`.
 - **Branch:** `t3/real-voice-hill-climb`.

@@ -1452,11 +1452,11 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    measured and logged in experiment 22, at −0.09 of score, and level /dʒ/ blocked it. Retry it first:
    that term's limit moved with the kept run. The [h]'s broad noise (top at 10–14 kHz) is gone from /tʃ/;
    nobody has found its source, and stops may still have it.
-6. **Short closures, long nasals.** Duration /k/ 3.4 / 3.6, /z/ 3.4 / 2.2, /ŋ/ 3.4 / 1.8, /n/ 1.1 / 1.9,
-   and stressed vowels before sonorants (female 1.5). Note MFA's convention: read the planner and the
-   report's numbers together (`phonetics/durations.rs`). Experiment 22: MFA gives 20–40 % of the synth's
-   stop closures to silence, 2–3 % of the speakers', so measure that before lengthening a closure.
-7. **Weak female bursts.** /k/ 3.3, /t/ 2.9: 9 dB weak. They may move with lead 3.
+6. **Short /dʒ z/, long nasals.** Duration /z/ 4.0 / 3.0, /dʒ/ 3.4 / 3.9, /ŋ/ 3.1 / 1.7, /n/ 2.0 / 2.0.
+   (The judge's "short /k/" was the aligner on near-silent closures; see "A judge correction" below.
+   Read the planner's and the report's numbers together: `phonetics/durations.rs`.)
+7. **Bursts.** Female /t k/ are 8–9 dB weak (costs 2.8, 3.2), and may move with lead 3. The male /p/
+   is 7 dB loud (2.9).
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
    (2–2.5 kHz, men 2.5–3.5): the excess is its tail, −2 to −8 dB at 5–10 kHz against the men's −3 to
    −16. See lead 11.
@@ -1693,3 +1693,20 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     apart before acting on lead 6.
   - **St** (experiment 21) can be reread: level /tʃ/ no longer trips, and male centroid /tʃ/ has room.
   - **Female /tʃ/ and /ʃ/ are 15–16 dB quiet and peak low** (2.2–2.4 kHz, a real token 3.6–4.1): leads 3, 4.
+
+### A judge correction between experiments 22 and 23: the aligner gets a noise floor (judge version 2)
+
+Experiment 22 found MFA giving 20–40 % of the synth's stop closures to silence, against 2–3 % for the
+speakers. The renders' closures are near digital silence (−85 to −300 dB re their loud level; the
+recordings' sit at −50 to −54 dB). So MFA now sees each render over white noise at −47 dB re its loud
+level, the median floor of the recordings (250 recordings: p10 −53.5, p90 −37.9). The measures still
+use the clean render.
+
+- **It was hiding and inventing costs.** Median stop reads longer (/k/ 60 → 90 ms, /t/ 60 → 80 ms).
+  Duration /k/ 3.2 / 3.7 → 0.1 / 0. Lead 6's "short closures" was mostly this: lengthening them would
+  have made them too long. Male burst /p/ now shows (2.9), and female level /t/ (4.3).
+- **The level is not critical:** −52 dB and −47 dB give 1.352 and 1.359, with the same top terms.
+- **Re-scored with version 2:** before batch 1 2.001, after batch 1 1.853, this batch's baseline
+  1.646 (held-out 1.710), after experiment 22 1.359 (held-out 1.533). `out/hill/baseline/tsp` and
+  `out/hill/best/tsp` hold those runs. Experiments 21 and 22 were kept on version 1 and stand. Their
+  score numbers aren't comparable with later ones.

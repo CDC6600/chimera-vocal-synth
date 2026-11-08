@@ -197,6 +197,26 @@ fn said_words(g: &EnglishG2P, text: &str) -> Vec<String> {
         .collect()
 }
 
+/// A render over a noise floor like the recordings': white noise (a fixed sequence, so a render
+/// always aligns the same) `ALIGN_FLOOR_DB` below its loud level. A render's closures are near
+/// digital silence where a recording's sit on room and preamp noise, and without a floor MFA gives
+/// them to silence and reads the stop as its release alone.
+fn over_noise_floor(x: &[f64]) -> Vec<f32> {
+    let n20 = (0.02 * crate::FS) as usize;
+    let frames: Vec<f64> = x.chunks(n20).filter(|c| c.len() == n20).map(mean_square).collect();
+    let rms = (percentile(&frames, 0.95) * 10f64.powf(ALIGN_FLOOR_DB / 10.0) * 3.0).sqrt();
+    let mut state: u32 = 0x2545_f491;
+    x.iter()
+        .map(|&v| {
+            // xorshift32, uniform in ±1 (variance 1/3, hence the 3 above)
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (v + rms * (state as f64 / 2_147_483_648.0 - 1.0)) as f32
+        })
+        .collect()
+}
+
 /// The Montreal Forced Aligner that `tools/tsp/setup.sh` installs, with its working files in
 /// `root` (one per run: MFA keeps them under the corpus directory's name, and two runs at once
 /// would share them) and the path of its english_us_arpa acoustic model.
@@ -254,8 +274,9 @@ fn align_synth(
         let stem = name(sid, *female);
         let d = format!("{corpus}/{stem}");
         std::fs::create_dir_all(&d).map_err(|e| format!("{d}: {e}"))?;
-        // 16-bit PCM, as the recordings are
-        let x: Vec<f32> = s.x.iter().map(|&v| v as f32).collect();
+        // 16-bit PCM, as the recordings are, over a noise floor like theirs (the measures use
+        // the clean render)
+        let x = over_noise_floor(&s.x);
         crate::wav::write(&format!("{d}/{stem}.wav"), &x, crate::FS as u32, false).map_err(|e| format!("{d}: {e}"))?;
         std::fs::write(format!("{d}/{stem}.lab"), words.join(" ") + "\n").map_err(|e| format!("{d}: {e}"))?;
     }
@@ -311,6 +332,9 @@ const MEL_HI: f64 = 10000.0;
 const GATE_DB: f64 = 40.0;
 /// YIN's aperiodicity threshold for a voiced frame (on the band below 1.2 kHz)
 const YIN_THRESHOLD: f64 = 0.3;
+/// The noise floor renders are aligned over (dB re their loud level): the recordings' median,
+/// measured as `Sig::new` does (the 5th against the 95th percentile of 20 ms frames).
+const ALIGN_FLOOR_DB: f64 = -47.0;
 /// Below this many tokens a speaker's category value is left out.
 const MIN_TOKENS: usize = 3;
 
@@ -916,7 +940,7 @@ pub fn held_out(speaker: &str) -> bool {
 }
 
 /// Bump when a measure, a term or the score changes: the verdict refuses to compare across.
-const JUDGE_VERSION: u32 = 1;
+const JUDGE_VERSION: u32 = 2;
 /// The scored groups, one share each. They hold the measures checked against the data and
 /// against what the owner heard (docs/speech-comparison.md, "What is scored").
 const GROUPS: [&str; 3] = ["level", "sibilants", "timing"];
@@ -1483,6 +1507,22 @@ mod tests {
 
     fn ph(ipa: &str) -> Phone {
         Phone { ipa: ipa.into(), stress: 0, t0: 0.0, t1: 0.1 }
+    }
+
+    #[test]
+    fn a_render_is_aligned_over_a_noise_floor_like_the_recordings() {
+        // half a second of a loud tone, then half a second of digital silence
+        let fs = crate::FS;
+        let x: Vec<f64> = (0..fs as usize)
+            .map(|i| if (i as f64) < 0.5 * fs { 0.5 * (i as f64 * 0.05).sin() } else { 0.0 })
+            .collect();
+        let y = over_noise_floor(&x);
+        let ms = |v: &[f32]| v.iter().map(|a| (*a as f64) * (*a as f64)).sum::<f64>() / v.len() as f64;
+        let n = fs as usize / 2;
+        let floor_db = 10.0 * (ms(&y[n..]) / ms(&y[..n])).log10();
+        assert!((floor_db - ALIGN_FLOOR_DB).abs() < 0.5, "silence now sits {floor_db} dB below the tone");
+        // the same render always aligns the same
+        assert_eq!(y, over_noise_floor(&x));
     }
 
     #[test]

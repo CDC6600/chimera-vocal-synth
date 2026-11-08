@@ -68,6 +68,13 @@ same settings for both (`tools/tsp/mfa.yaml`).
   `tools/tsp/align.sh` regenerates it.
 - **Renders.** Aligned on every run (about 25 s) with a dictionary of exactly what the G2P said,
   including its reduced function words: "of" is AH0 V.
+- **A noise floor for the aligner.** MFA sees each render over white noise (a fixed sequence) 47 dB
+  below its loud level, the median floor of the recordings. The measures use the clean render. A
+  render's closures are near digital silence (−85 to −300 dB re its loud level; the recordings'
+  sit at −50 to −54 dB), and on them MFA gave part of a stop's closure to silence and read the stop
+  as little more than its release. The synth's /k/ read 0.7 of a mean phone against the speakers'
+  1.1–1.2, a cost of 3.2 and 3.7. Over a floor it reads 1.1 and costs 0.1 and 0. −52 dB and −47 dB
+  give nearly the same result (score 1.352 and 1.359).
 - **Why not the planner's own times.** The planner's segments are gestures, not sounds. Over
   120 renders, MFA put the synth's vowels 29 ms shorter than the plan's segments (median; the
   start 22 ms later and the end 12 ms earlier). It put voiceless fricatives 29 ms longer and
@@ -202,8 +209,7 @@ CHANGE, +0.000). Only scored terms count:
 - **No clear change:** anything else.
 
 These thresholds are policy, not measured audibility. A batch of many experiments will break a
-term even while the score falls a lot: batch 2 as a whole comes out WORSE (−0.214, with seven
-terms up by 0.5–1.0).
+term even while the score falls a lot, and batch 2 as a whole comes out WORSE for that reason.
 
 ## Caveats
 
@@ -224,20 +230,20 @@ terms up by 0.5–1.0).
 
 ## Baseline (2026-11-07, after batch 2)
 
-**Score 1.583 on the training speakers' sentences, 1.706 on the held-out speakers'.** A real
-speaker gets 0.277 (median over the training speakers; 0.242 for the held-out ones). Per sex:
-female 2.19, male 0.97.
+**Score 1.646 on the training speakers' sentences, 1.710 on the held-out speakers'.** A real
+speaker gets 0.277 (median over the training speakers; 0.243 for the held-out ones). Per sex:
+female 2.36, male 0.93.
 
 | group | female | male |
 |---|---|---|
-| level | 1.80 | 0.68 |
-| sibilants | 3.82 | 1.38 |
-| timing | 0.96 | 0.85 |
-| *spectrum* | *1.33* | *1.64* |
-| *formants* | *1.26* | *1.04* |
-| *voice* | *0.65* | *1.16* |
-| *voicing* | *0.35* | *0.46* |
-| *intonation* | *1.26* | *0.86* |
+| level | 2.20 | 0.77 |
+| sibilants | 4.00 | 1.35 |
+| timing | 0.89 | 0.66 |
+| *spectrum* | *1.39* | *1.68* |
+| *formants* | *1.25* | *1.05* |
+| *voice* | *0.66* | *1.16* |
+| *voicing* | *0.35* | *0.51* |
+| *intonation* | *1.25* | *0.86* |
 
 (Diagnostics in italics.) What it points at, largest first:
 
@@ -245,26 +251,27 @@ female 2.19, male 0.97.
 
    | | women | synth |
    |---|---|---|
-   | /tʃ/ level (frication) | −9 dB re her stressed vowels | −26 dB |
+   | /tʃ/ level (frication) | −9 dB re her stressed vowels | −28 dB |
    | /ʃ/ level | −7 dB | −23 dB |
-   | /s/ level | −11 dB | −21 dB |
+   | /s/ level | −11 dB | −22 dB |
    | /s/ centroid | 7.4 kHz | 4.7 kHz |
    | /z/ centroid | 7.1 kHz | 4.0 kHz |
    | /ʃ/ centroid | 4.0 kHz | 3.3 kHz |
 
-   The male /tʃ/ is 8 dB quiet and his /ʃ/ 6 dB. His /s z/ centroids are 1.2–1.5 kHz low.
-   The female /h/ is 14 dB quiet.
-2. **Closures and affricates are short; nasals long.**
+   The male /tʃ/ is 8 dB quiet and his /ʃ/ 6 dB. His /s z/ centroids are 1.2–1.5 kHz low. The
+   female /h/ is 13 dB quiet.
+2. **Some sounds last too long or too short.**
 
    | | speakers | synth |
    |---|---|---|
-   | /k/ | 1.1–1.2 of a mean phone | 0.7–0.8 |
-   | /dʒ/ | 1.2–1.3 | 0.5 |
-   | /z/ | 0.9–1.0 | 0.5–0.6 |
+   | /dʒ/ | 1.2–1.3 of a mean phone | 0.5 |
+   | /z/ | 0.9–1.0 | 0.45–0.53 |
+   | /tʃ/ | 1.5–1.6 | 1.1–1.2 |
    | /ŋ/ | 0.9–1.0 | 1.3–1.4 |
+   | /n/ | 0.8 | 1.1 |
 
-   Stressed vowels before sonorants are long (female 1.49 against 1.19).
-3. **Bursts.** Female /t k/ bursts are 9 dB weak. /ð/ and /v/ are 7–11 dB too loud in both voices.
+3. **Bursts and weak fricatives.** Female /t k/ bursts are 8–9 dB weak and the male /p/ burst 7 dB
+   loud. /ð/ and /v/ are 7–11 dB too loud in both voices.
 4. **Diagnostics worth a look.**
    - **The voice lacks presence at 1–4 kHz.** Over the stressed vowels, in dB re 0–8 kHz: at
      1–2 kHz, women −10.8, female synth −16.1, men −10.6, male synth −19.7; at 2–4 kHz, −16.4,
@@ -278,10 +285,10 @@ female 2.19, male 0.97.
 
 | commit | training | held-out | female | male |
 |---|---|---|---|---|
-| before batch 1 (5186d64) | 1.994 | 2.063 | 2.86 | 1.13 |
-| after batch 1 (4980e3b) | 1.797 | 1.888 | 2.59 | 1.00 |
-| after batch 2 (now) | 1.583 | 1.706 | 2.19 | 0.97 |
+| before batch 1 (5186d64) | 2.001 | 2.143 | 2.92 | 1.08 |
+| after batch 1 (4980e3b) | 1.853 | 1.977 | 2.78 | 0.93 |
+| after batch 2 (e939cf7) | 1.646 | 1.710 | 2.36 | 0.93 |
 
-- **Batch 1** mostly helped timing (female 1.28 → 0.96, male 1.07 → 0.93).
+- **Batch 1** mostly helped timing (female 1.33 → 0.94, male 0.82 → 0.68).
 - **Batch 2** moved the female /ʃ/ centroid from 2.8 to 3.3 kHz (women 4.0). It overshot the
   male /ʃ/ (3.27 → 3.48 kHz, men 3.13). No batch moved the female sibilant levels.
