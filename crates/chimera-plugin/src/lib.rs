@@ -10,14 +10,12 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
 
+use chimera::control::singer::{Singer, syllables_from};
 use chimera::engine::Engine;
 use chimera::phonetics::Syllable;
 use chimera::phonetics::english::EnglishG2P;
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use nih_plug::prelude::*;
-
-mod sing;
-use sing::Sing;
 
 #[cfg(target_os = "macos")]
 mod editor;
@@ -118,14 +116,14 @@ pub struct Chimera {
     params: Arc<ChimeraParams>,
     shared: Arc<Shared>,
     engine: Option<Engine>,
-    sing: Sing,
+    sing: Singer,
     mono: Vec<f32>,
     level: f32,
 }
 
 impl Default for Chimera {
     fn default() -> Self {
-        Self { params: Arc::new(ChimeraParams::default()), shared: Arc::new(Shared::default()), engine: None, sing: Sing::new(), mono: Vec::new(), level: 0.0 }
+        Self { params: Arc::new(ChimeraParams::default()), shared: Arc::new(Shared::default()), engine: None, sing: Singer::new(), mono: Vec::new(), level: 0.0 }
     }
 }
 
@@ -133,8 +131,8 @@ impl Chimera {
     fn handle(&mut self, ev: &NoteEvent<()>) {
         let Some(e) = self.engine.as_mut() else { return };
         match *ev {
-            NoteEvent::NoteOn { note, velocity, .. } => util::permit_alloc(|| self.sing.note_on(e, note, (velocity * 127.0) as f64)),
-            NoteEvent::NoteOff { note, .. } => util::permit_alloc(|| self.sing.note_off(e, note)),
+            NoteEvent::NoteOn { note, velocity, .. } => self.sing.note_on(e, note, (velocity * 127.0) as f64),
+            NoteEvent::NoteOff { note, .. } => self.sing.note_off(e, note),
             NoteEvent::Choke { .. } => self.sing.stop_all(e),
             NoteEvent::MidiCC { cc: 120 | 123, .. } => self.sing.stop_all(e),
             _ => {}
@@ -190,7 +188,7 @@ impl Plugin for Chimera {
         let lyrics = self.params.lyrics.read().unwrap().clone();
         self.shared.set_lyrics(&self.params, &lyrics);
         if let Some(s) = self.shared.pending.lock().unwrap().take() {
-            self.sing.set_syllables(s);
+            let _ = self.sing.set_syllables(syllables_from(&s));
         }
         // the airway goes unstable below MIN_SAMPLE_RATE (NaN at 22.05 kHz): stay silent there
         // rather than refusing to activate, which some hosts' plugin scans treat as an error
@@ -227,7 +225,8 @@ impl Plugin for Chimera {
             if let Ok(mut p) = self.shared.pending.try_lock()
                 && let Some(s) = p.take()
             {
-                util::permit_alloc(|| self.sing.set_syllables(s));
+                // spike: frees the old lyrics on the audio thread
+                util::permit_alloc(|| drop(self.sing.set_syllables(syllables_from(&s))));
             }
             self.sing.vibrato = self.params.vibrato.value() as f64;
             let shared = self.shared.clone();
@@ -269,8 +268,8 @@ impl Plugin for Chimera {
         if used > self.shared.load_peak.load() {
             self.shared.load_peak.store(used);
         }
-        self.shared.cursor.store(self.sing.cursor as i32, Ordering::Relaxed);
-        self.shared.sung.store(self.sing.sung.map_or(-1, |i| i as i32), Ordering::Relaxed);
+        self.shared.cursor.store(self.sing.cursor() as i32, Ordering::Relaxed);
+        self.shared.sung.store(self.sing.sung().map_or(-1, |i| i as i32), Ordering::Relaxed);
         self.shared.note.store(self.sing.sounding_note().map_or(-1, |m| m as i32), Ordering::Relaxed);
         ProcessStatus::KeepAlive
     }
@@ -284,13 +283,9 @@ impl ClapPlugin for Chimera {
     const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::Instrument, ClapFeature::Synthesizer, ClapFeature::Mono, ClapFeature::Stereo];
 }
 
-impl Vst3Plugin for Chimera {
-    const VST3_CLASS_ID: [u8; 16] = *b"ChimeraVoiceSyn1";
-    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
-}
-
 nih_export_clap!(Chimera);
-nih_export_vst3!(Chimera);
+clap_wrapper::export_vst3!();
+clap_wrapper::export_auv2!();
 
 #[cfg(test)]
 mod tests {
@@ -299,8 +294,8 @@ mod tests {
     /// Sing a few notes through the controller at `fs`; returns the peak and whether all samples are finite.
     fn sing_at(fs: f64) -> (f32, bool) {
         let mut e = Engine::new(fs);
-        let mut s = Sing::new();
-        s.set_syllables(lyrics_to_syllables("hello there", g2p()));
+        let mut s = Singer::new();
+        let _ = s.set_syllables(syllables_from(&lyrics_to_syllables("hello there", g2p())));
         let mut out = vec![0.0f32; (fs * 0.25) as usize];
         let (mut peak, mut finite) = (0.0f32, true);
         let mut run = |e: &mut Engine| {
@@ -356,8 +351,8 @@ mod timing {
         let t = Instant::now();
         let mut e = Engine::new(44100.0);
         println!("Engine::new: {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
-        let mut s = Sing::new();
-        s.set_syllables(lyrics_to_syllables(DEFAULT_LYRICS, g2p()));
+        let mut s = Singer::new();
+        let _ = s.set_syllables(syllables_from(&lyrics_to_syllables(DEFAULT_LYRICS, g2p())));
         let mut buf = vec![0.0f32; 256];
         let block = 256.0 / 44100.0;
         let (mut worst, mut total, mut blocks, mut plan_worst) = (0.0f64, 0.0f64, 0, 0.0f64);
