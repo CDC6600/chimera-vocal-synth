@@ -1487,7 +1487,7 @@ Largest costs first. Costs are the speakers' report, female / male where both.
     0.14 puts /z/'s low band within about 3 dB of theirs. Only female level /z/ stops it: voicing was
     filling her 10 dB frication gap, so it waits on leads 3 and 4.
 15. **The male /v f θ/ are too bright** (from experiment 23). 4–12 kHz, dB re the stressed vowels: /v/ −24
-    (men −40), /f/ −22 (−29), /θ/ −21 (−30). The female ones are within 4 dB of the women's. Not
+    (men −40), /f/ −22 (−29), /θ/ −21 (−30). The female ones are within 5 dB of the women's. Not
     investigated: their noise gain or their constriction's jet.
 
 ### 21. The teeth source's band follows the jet at the teeth, with its power held (kept)
@@ -1800,7 +1800,7 @@ use the clean render.
     vowel's own pulses read as one. Rather than touch a judge, I took a voiceless fricative's start, which
     weakens those pulses. −10 ms scores 0.01 better; I kept −15 because it adds no new value.
   - **The kept form is about half the gain measured.** With /ð/ the score reaches 1.19–1.23.
-  - **Several breaks are the aligner.** Female burst /d/ moved −1.2 dB as a median, but its paired median moved
+  - **Several breaks are the aligner.** At the 0.14 form, female burst /d/ moved −1.2 dB as a median, but its paired median moved
     −0.07 dB, with 307 of 735 tokens moving by more than 1 dB. Shortening /ð/ re-times everything after it,
     which is why changing the plan rolled up a different term each time (burst d, durations g, ŋ, h).
 - **Why /ð/ is held back.**
@@ -1809,8 +1809,8 @@ use the clean render.
     lasts from about 10 ms before the plan to 20 ms after it, so 70–90 ms. The male already reads 110 ms there.
     Weaken the voice at all and MFA reads the true extent (0.08 is enough). A release 20–30 ms early barely moves
     it, and (20, 15) moves it to 0.64–0.75 at the price above.
-  - **Whisper.** At the 0.14 form, 36.09 → 45.03 %, and a sentence's first "The" becomes "with a" in eight
-    sentences (a weak voice and a jet, so /θ/?). The singer held there (0.586, note MCD 8.613 dB).
+  - **Whisper.** At the 0.14 form, 36.09 → 45.03 %, and a sentence's first "The" becomes "with a" in at least
+    nine renders, from the 16 worst I read (a weak voice and a jet, so /θ/? I didn't test that). The singer held there (0.586, note MCD 8.613 dB).
   - **Speakers' /ð/ isn't one sound** (level, and below 1.2 kHz; female, then male):
 
     | after | female | male |
