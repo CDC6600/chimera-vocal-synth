@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/chimera", "crates/chimera-wasm", "crates/chimera-cli", "crates/chimera-plugin", "xtask"]
+members = ["crates/chimera", "crates/chimera-wasm", "crates/chimera-cli", "crates/chimera-plugin"]
 
 [workspace.package]
 version = "0.1.0"

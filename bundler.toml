@@ -1,3 +1,0 @@
-# Bundle names for `cargo xtask bundle` (nih-plug)
-[chimera-plugin]
-name = "CHIMERA"
