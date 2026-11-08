@@ -9,16 +9,18 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
-use chimera::control::score::Gesture;
+use chimera::control::score::{Gesture, Label};
 use chimera::control::singer::{Singer, syllables_from};
 use chimera::engine::{Engine, SUB_BLOCK};
 use chimera::math::{midi_to_hz, pow};
 use chimera::phonetics::Syllable;
+use chimera::phonetics::beatbox::{BEAT_PRESETS, BeatStep, parse_beat};
 use chimera::phonetics::sing::LiveSyllable;
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::{HumanVoice, SourcePatch, TELE_LABELS, VoiceTelemetry};
 use serde::{Deserialize, Serialize};
 
+use crate::close_mic::CloseMic;
 use crate::g2p;
 use crate::speech::{SpeechSettings, SpokenLine, plan_lines};
 
@@ -40,6 +42,20 @@ const SPEECH_ROOT: f64 = 60.0;
 const SPEECH_RANGE: f64 = 24.0;
 /// A spoken line's time 0 comes this long after its note (s), as on the website.
 const SPEECH_LEAD: f64 = 0.03;
+/// What Beatbox reports as latency, and how far after its point on the timeline each hit lands (s):
+/// a little more than the slowest sound's set-up (174 ms). See docs/plugin.md, "Beatbox".
+pub const BEAT_LATENCY: f64 = 0.18;
+/// Host notes from this one up hum, this many semitones down; below it they are pads.
+const HUM_FROM: u8 = 60;
+const HUM_DOWN: u8 = 24;
+/// The tag of a hum held by a key (the singer's tags are positive), and how long it can last (s).
+const HUM_TAG: f64 = -1.0;
+const HUM_LEN: f64 = 3600.0;
+const HUM: &str = "m";
+/// A hit that isn't a step has no next step to last until (s), as on the website.
+const BEAT_HIT_LEN: f64 = 0.18;
+/// Pads pressed on the page waiting for the audio thread: more are dropped.
+const MAX_UI_HITS: usize = 32;
 /// [`Shared::spoken_line`]: nothing is being said.
 pub const NOT_SPEAKING: i32 = -1;
 /// [`Shared::spoken_line`]: the consonant chart's one-shot is being said.
@@ -56,6 +72,63 @@ pub enum Mode {
     Play,
     /// each note says the next line
     Speak,
+    /// the sequencer follows the host, and notes are pads or a hum
+    Beatbox,
+}
+
+/// The sound a host note plays in Beatbox: General MIDI's drum kit on the ten mouth sounds.
+pub fn drum_pad(midi: u8) -> Option<&'static str> {
+    Some(match midi {
+        35 | 36 => "B",
+        37 => "K",
+        38 => "Pf",
+        39 => "!",
+        40 => "^K",
+        41 | 43 | 45 | 47 | 48 | 50 => "P!",
+        42 | 44 | 51 | 53 | 59 => "t",
+        46 => "tss",
+        49 | 52 | 55 | 57 => "kch",
+        _ => return None,
+    })
+}
+
+/// A saved beat.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BeatSettings {
+    pub steps: Vec<Option<BeatStep>>,
+    pub bpm: f64,
+    pub swing: f64,
+    /// the example it came from (none once edited)
+    pub preset: Option<String>,
+    /// the close-mic sound
+    pub mic: bool,
+    /// the sequencer follows the host's transport
+    pub follow: bool,
+}
+
+impl Default for BeatSettings {
+    fn default() -> Self {
+        let p = &BEAT_PRESETS[0];
+        BeatSettings { steps: parse_beat(p.text), bpm: p.bpm, swing: p.swing, preset: Some(p.name.to_string()), mic: true, follow: true }
+    }
+}
+
+/// Who holds a key, in Beatbox: the same number means a different pitch from each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Owner {
+    Host,
+    Ui,
+}
+
+/// A held key humming.
+#[derive(Clone, Copy, Debug)]
+struct Hum {
+    owner: Owner,
+    midi: u8,
+    /// the pitch it sounds (MIDI)
+    pitch: f64,
+    accent: f64,
 }
 
 /// What a project saves besides the host parameters.
@@ -75,11 +148,12 @@ pub struct Settings {
     /// where the lyrics restart when the transport starts
     pub start_syllable: usize,
     pub speech: SpeechSettings,
+    pub beat: BeatSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { version: 1, lyrics: DEFAULT_LYRICS.to_string(), body: BodyMix::MALE, mode: Mode::Sing, artic: ArticPatch::default(), tip_free: true, voiced: true, f0: 110.0, start_syllable: 0, speech: SpeechSettings::default() }
+        Settings { version: 1, lyrics: DEFAULT_LYRICS.to_string(), body: BodyMix::MALE, mode: Mode::Sing, artic: ArticPatch::default(), tip_free: true, voiced: true, f0: 110.0, start_syllable: 0, speech: SpeechSettings::default(), beat: BeatSettings::default() }
     }
 }
 
@@ -105,6 +179,11 @@ pub struct Transport {
     pub playing: bool,
     /// where it is (beats where the host gives them), to notice a loop or a seek
     pub position: Option<f64>,
+    /// where it is in beats, and its tempo, if the host says
+    pub beats: Option<f64>,
+    pub tempo: Option<f64>,
+    /// samples in this block
+    pub samples: usize,
 }
 
 /// A host event, at the point in the block [`Core::event`] is called.
@@ -141,6 +220,13 @@ pub struct Pending {
     /// say the next line (the Speak button)
     pub speak_next: bool,
     pub stop_speech: bool,
+    pub beat_bpm: Option<f64>,
+    pub beat_swing: Option<f64>,
+    pub beat_playing: Option<bool>,
+    pub mic: Option<bool>,
+    pub follow_host: Option<bool>,
+    beat_steps: Option<Vec<Option<BeatStep>>>,
+    hits: Vec<BeatStep>,
     voice: Option<(Box<HumanVoice>, BodyMix)>,
     syllables: Option<Vec<LiveSyllable>>,
     speech: Option<NewSpeech>,
@@ -153,6 +239,7 @@ pub struct Pending {
     retired_syllables: Option<Vec<LiveSyllable>>,
     retired_speech: Option<Vec<Vec<Gesture>>>,
     retired_pad: Option<Vec<Gesture>>,
+    retired_steps: Option<Vec<Option<BeatStep>>>,
     /// the rate a new voice must have (0: not active)
     sample_rate: f64,
 }
@@ -260,6 +347,13 @@ pub struct Shared {
     pub spoken_generation: AtomicU32,
     /// the voice clock at the plan's time 0 (f64 bits)
     pub spoken_t0: AtomicU64,
+    /// the step under the playhead (−1: none)
+    pub beat_step: AtomicI32,
+    /// the pattern is running, and whether that's the host's doing
+    pub beat_running: AtomicBool,
+    pub beat_following: AtomicBool,
+    /// the host's tempo (f64 bits; 0: not known)
+    pub host_bpm: AtomicU64,
     pub playing: AtomicBool,
     /// time spent in `process` and audio time rendered since the editor last read them (ns), and
     /// the worst block (a fraction of its duration)
@@ -356,6 +450,24 @@ impl Shared {
         drop(freed);
     }
 
+    /// A new pattern for the sequencer.
+    pub fn send_beat_steps(&self, steps: Vec<Option<BeatStep>>) {
+        let mut p = self.lock();
+        let freed = (p.retired_steps.take(), p.beat_steps.replace(steps));
+        self.dirty.store(true, Ordering::Release);
+        drop(p);
+        drop(freed);
+    }
+
+    /// A pad pressed on the page. If too many are waiting (a host that stopped processing), it's lost.
+    pub fn ui_hit(&self, step: BeatStep) {
+        self.edit(|p| {
+            if p.hits.len() < MAX_UI_HITS {
+                p.hits.push(step);
+            }
+        });
+    }
+
     /// Say this once, now, if Speak is the mode (the consonant chart).
     pub fn send_pad(&self, line: SpokenLine) {
         let generation = self.next_generation();
@@ -383,7 +495,7 @@ impl Shared {
 
     /// Start afresh, as `initialize` does: nothing queued is for the new [`Core`].
     pub fn restart(&self, sample_rate: f64) {
-        let fresh = Pending { sample_rate, notes: Vec::with_capacity(MAX_UI_NOTES), ..Default::default() };
+        let fresh = Pending { sample_rate, notes: Vec::with_capacity(MAX_UI_NOTES), hits: Vec::with_capacity(MAX_UI_HITS), ..Default::default() };
         let mut p = self.lock();
         let old = std::mem::replace(&mut *p, fresh);
         // under the same lock: an edit published right after must keep its notification
@@ -467,6 +579,15 @@ pub struct Core {
     /// pitch ratios: from the key that said this line, and the pitch wheel
     key_bend: f64,
     wheel_bend: f64,
+    /// the sequencer is following the host's transport
+    following: bool,
+    follow_host: bool,
+    /// the user's tempo: following the host overwrites the sequencer's
+    beat_bpm: f64,
+    mic_on: bool,
+    close_mic: CloseMic,
+    /// keys humming in Beatbox, oldest first
+    hums: Vec<Hum>,
     /// samples until the next telemetry snapshot
     tele_due: i64,
     tele_every: i64,
@@ -518,11 +639,19 @@ impl Core {
             spoken_t0: 0.0,
             key_bend: 1.0,
             wheel_bend: 1.0,
+            following: false,
+            follow_host: settings.beat.follow,
+            beat_bpm: settings.beat.bpm,
+            mic_on: settings.beat.mic,
+            close_mic: CloseMic::new(sample_rate),
+            hums: Vec::with_capacity(2 * 128),
             tele_due: 0,
             tele_every: (sample_rate / TELEMETRY_RATE) as i64,
         };
         core.engine.set_source(&SourcePatch { f0: Some(settings.f0), voiced: Some(settings.voiced), ..Default::default() });
         core.engine.set_artic(&settings.artic, Some(settings.tip_free));
+        core.engine.set_beat_steps(&settings.beat.steps);
+        core.engine.set_beat_tempo(Some(settings.beat.bpm), Some(settings.beat.swing));
         core.apply_params();
         // a voice's first control step sizes some of its buffers: not on the audio thread
         core.engine.render(&mut [0.0; SUB_BLOCK]);
@@ -540,6 +669,11 @@ impl Core {
     /// The line a note says next.
     pub fn speech_cursor(&self) -> usize {
         self.speech_cursor
+    }
+
+    /// The latency to report to the host: only Beatbox has any.
+    pub fn latency_samples(&self) -> u32 {
+        if self.mode == Mode::Beatbox { (BEAT_LATENCY * self.engine.sample_rate).round() as u32 } else { 0 }
     }
 
     fn apply_params(&mut self) {
@@ -581,6 +715,8 @@ impl Core {
                 let semitones = (midi as f64 - SPEECH_ROOT).clamp(-SPEECH_RANGE, SPEECH_RANGE);
                 self.say_next(pow(2.0, semitones / 12.0));
             }
+            // by owner: see `beat_key`
+            Mode::Beatbox => {}
         }
     }
 
@@ -589,6 +725,7 @@ impl Core {
             Mode::Sing => self.singer.note_off(&mut self.engine, midi),
             // a line is a one-shot: it ends by itself, or when the next one cuts it
             Mode::Speak => {}
+            Mode::Beatbox => {}
             Mode::Play => {
                 self.play_keys.retain(|&k| k != midi);
                 // fall back to the most recent note still held (legato)
@@ -609,7 +746,100 @@ impl Core {
         if self.mode == Mode::Speak {
             self.stop_speaking();
         }
+        if self.mode == Mode::Beatbox {
+            self.hums.clear();
+            let now = self.engine.clock();
+            self.engine.release_at(HUM_TAG, now);
+        }
         self.update_gate();
+    }
+
+    /// When a sound asked for now should land: `BEAT_LATENCY` on, while the host's timeline is
+    /// running and it compensates; otherwise as soon as the mouth can make it.
+    fn beat_time(&mut self, id: &str) -> f64 {
+        let wait = if self.transport.playing { BEAT_LATENCY } else { self.engine.beat_lead(id) };
+        self.engine.clock() + wait
+    }
+
+    /// A sound from a pad, or from a host note on the drum map.
+    fn beat_hit(&mut self, step: BeatStep) {
+        let hit = self.beat_time(step.id.as_str());
+        self.engine.beat_hit_at(&step, hit, BEAT_HIT_LEN, None);
+    }
+
+    /// Hum this key's pitch, in place of whatever was humming.
+    fn start_hum(&mut self, hum: Hum) {
+        let hit = self.beat_time(HUM);
+        self.engine.release_at(HUM_TAG, hit);
+        let step = BeatStep { id: Label::new(HUM), note: Some(hum.pitch), accent: Some(hum.accent) };
+        self.engine.beat_hit_at(&step, hit, HUM_LEN, Some(HUM_TAG));
+    }
+
+    /// The hums changed: the newest key held hums, or nothing does. `top` is what was humming.
+    fn resolve_hums(&mut self, top: Option<(Owner, u8)>) {
+        let now = self.hums.last().copied();
+        match now {
+            Some(h) if top != Some((h.owner, h.midi)) => self.start_hum(h),
+            Some(_) => {}
+            None if top.is_some() => {
+                let t = self.beat_time(HUM);
+                self.engine.release_at(HUM_TAG, t);
+            }
+            None => {}
+        }
+    }
+
+    /// A key went down or up in Beatbox. The two owners' numbers mean different pitches, so the
+    /// shared press and release masks don't apply here.
+    fn beat_key(&mut self, owner: Owner, midi: u8, velocity: f64, on: bool) {
+        let accent = (velocity / 100.0).clamp(0.4, 1.25);
+        let pitch = match owner {
+            Owner::Ui => midi as f64,
+            Owner::Host if midi >= HUM_FROM => (midi - HUM_DOWN) as f64,
+            Owner::Host => {
+                if on && let Some(id) = drum_pad(midi) {
+                    self.presses = self.presses.wrapping_add(1);
+                    self.beat_hit(BeatStep { id: Label::new(id), note: None, accent: Some(accent) });
+                }
+                return;
+            }
+        };
+        let top = self.hums.last().map(|h| (h.owner, h.midi));
+        self.hums.retain(|h| !(h.owner == owner && h.midi == midi));
+        if on {
+            self.presses = self.presses.wrapping_add(1);
+            self.hums.push(Hum { owner, midi, pitch, accent });
+            // a repeat of the key humming is a new note
+            if top == Some((owner, midi)) {
+                let h = self.hums[self.hums.len() - 1];
+                self.start_hum(h);
+                return;
+            }
+        }
+        self.resolve_hums(top);
+    }
+
+    /// Follow the host's transport with the sequencer, or stop following it.
+    fn follow_beat(&mut self, t: Transport) {
+        let host = if self.mode == Mode::Beatbox && self.follow_host && t.playing { t.beats.zip(t.tempo).filter(|(_, bpm)| *bpm > 0.0) } else { None };
+        match host {
+            Some((beats, bpm)) => {
+                if !self.following {
+                    self.engine.set_beat_playing(false);
+                    self.following = true;
+                }
+                let end = beats + t.samples as f64 / self.engine.sample_rate * bpm / 60.0;
+                self.engine.beat_follow(beats, end, bpm, BEAT_LATENCY);
+            }
+            None if self.following => self.stop_following(),
+            None => {}
+        }
+    }
+
+    fn stop_following(&mut self) {
+        self.following = false;
+        self.engine.beat_stop_following();
+        self.engine.set_beat_tempo(Some(self.beat_bpm), None);
     }
 
     fn mark_spoken(&mut self, line: i32, generation: u32, t0: f64) {
@@ -640,6 +870,12 @@ impl Core {
     }
 
     fn lift_ui_keys(&mut self) {
+        if self.mode == Mode::Beatbox {
+            let top = self.hums.last().map(|h| (h.owner, h.midi));
+            self.hums.retain(|h| h.owner != Owner::Ui);
+            self.resolve_hums(top);
+            return;
+        }
         let mine = self.ui_keys;
         self.ui_keys = 0;
         for midi in 0..128u8 {
@@ -679,6 +915,10 @@ impl Core {
             && mode != self.mode
         {
             self.stop_notes();
+            if self.mode == Mode::Beatbox {
+                self.stop_following();
+                self.engine.set_beat_playing(false);
+            }
             self.mode = mode;
             self.hold = false;
             self.update_gate();
@@ -720,6 +960,32 @@ impl Core {
                 self.mark_spoken(SAYING_PAD, generation, t0);
             }
         }
+        if let Some(steps) = p.beat_steps.take() {
+            self.engine.set_beat_steps(&steps);
+            p.retired_steps = Some(steps);
+        }
+        if p.beat_bpm.is_some() || p.beat_swing.is_some() {
+            self.beat_bpm = p.beat_bpm.unwrap_or(self.beat_bpm);
+            self.engine.set_beat_tempo(p.beat_bpm.take(), p.beat_swing.take());
+        }
+        if let Some(on) = p.mic.take() {
+            self.mic_on = on;
+        }
+        if let Some(on) = p.follow_host.take() {
+            self.follow_host = on;
+        }
+        if let Some(on) = p.beat_playing.take()
+            && self.mode == Mode::Beatbox
+            && !self.following
+        {
+            self.engine.set_beat_playing(on);
+        }
+        let Pending { hits, .. } = &mut *p;
+        for step in hits.drain(..) {
+            if self.mode == Mode::Beatbox {
+                self.beat_hit(step);
+            }
+        }
         if std::mem::take(&mut p.speak_next) && self.mode == Mode::Speak {
             self.say_next(1.0);
         }
@@ -732,6 +998,10 @@ impl Core {
         }
         let Pending { notes, .. } = &mut *p;
         for n in notes.drain(..) {
+            if self.mode == Mode::Beatbox {
+                self.beat_key(Owner::Ui, n.midi & 127, n.velocity, n.on);
+                continue;
+            }
             let bit = 1u128 << (n.midi & 127);
             if n.on {
                 self.ui_keys |= bit;
@@ -760,6 +1030,7 @@ impl Core {
             self.stop_notes();
         }
         self.transport = t;
+        self.follow_beat(t);
         shared.playing.store(t.playing, Ordering::Relaxed);
     }
 
@@ -776,6 +1047,8 @@ impl Core {
     /// A host event. Render up to its sample first.
     pub fn event(&mut self, ev: Event) {
         match ev {
+            Event::NoteOn { midi, velocity } if self.mode == Mode::Beatbox => self.beat_key(Owner::Host, midi & 127, velocity, true),
+            Event::NoteOff { midi } if self.mode == Mode::Beatbox => self.beat_key(Owner::Host, midi & 127, 0.0, false),
             Event::NoteOn { midi, velocity } => {
                 let bit = 1u128 << (midi & 127);
                 self.host_keys |= bit;
@@ -802,6 +1075,9 @@ impl Core {
 
     pub fn render(&mut self, out: &mut [f32]) {
         self.engine.render(out);
+        if self.mode == Mode::Beatbox && self.mic_on {
+            self.close_mic.process(out);
+        }
     }
 
     /// End of a block of `samples`: tell the editor where things are.
@@ -811,7 +1087,7 @@ impl Core {
         let note = match self.mode {
             Mode::Sing => self.singer.sounding_note().map_or(-1, |m| m as i32),
             Mode::Play => self.play_keys.last().map_or(-1, |m| *m as i32),
-            Mode::Speak => -1,
+            Mode::Speak | Mode::Beatbox => -1,
         };
         shared.note.store(note, Ordering::Relaxed);
         shared.note_serial.store(self.presses, Ordering::Relaxed);
@@ -820,6 +1096,10 @@ impl Core {
         shared.spoken_generation.store(self.spoken_generation, Ordering::Relaxed);
         shared.spoken_t0.store(self.spoken_t0.to_bits(), Ordering::Relaxed);
         shared.spoken_serial.store(self.spoken_serial, Ordering::Release);
+        shared.beat_step.store(self.engine.beat_step() as i32, Ordering::Relaxed);
+        shared.beat_running.store(self.following || self.engine.beat().playing, Ordering::Relaxed);
+        shared.beat_following.store(self.following, Ordering::Relaxed);
+        shared.host_bpm.store(self.transport.tempo.unwrap_or(0.0).to_bits(), Ordering::Relaxed);
         let n = samples as i64;
         if shared.watch.fetch_sub(n, Ordering::Relaxed) <= 0 {
             shared.watch.store(0, Ordering::Relaxed);
@@ -844,6 +1124,8 @@ impl Core {
     /// docs/plugin.md.
     pub fn reset(&mut self) {
         self.stop_notes();
+        self.stop_following();
+        self.engine.set_beat_playing(false);
         self.engine.stop_speech();
         self.key_bend = 1.0;
         self.wheel_bend = 1.0;

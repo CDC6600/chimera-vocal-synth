@@ -4,14 +4,14 @@
  */
 import { engine } from "../audio/AudioEngine.ts";
 import { ARTIC_PARAMS, SOURCE_PARAMS, dbToVolume, gestureOpen, setRevision } from "../audio/pluginBridge.ts";
-import type { BodyMix, HumanArtic, Syllable, VoiceSource } from "../wasm/engine.ts";
+import type { BeatStep, BodyMix, HumanArtic, Syllable, VoiceSource } from "../wasm/engine.ts";
 import { TELE_LABELS, decodeTelemetry } from "../worklet/telemetry.ts";
 import { clearPluginNotes, followPluginNote, roll, useSing } from "./singing.ts";
 import { followSpoken, useSpeech } from "./speech.ts";
 import { useStore } from "./store.ts";
 
 /** Scalars at the head of a `/poll` response: POLL_HEADER in crates/chimera-plugin/src/bridge.rs. */
-const POLL_HEADER = 21;
+const POLL_HEADER = 25;
 /** Parameters are read every this many frames: about 20 times a second. */
 const PARAMS_EVERY = 3;
 /** The engine-load readout's window (ms). */
@@ -22,7 +22,7 @@ type Params = Record<string, number>;
 interface Snapshot {
   revision: number;
   syllablesVersion: number;
-  settings: { lyrics: string; body: BodyMix; mode: "sing" | "play" | "speak"; artic: Partial<HumanArtic>; tipFree: boolean; voiced: boolean; f0: number; speech: { text: string; ipa: boolean; rate: number } };
+  settings: { lyrics: string; body: BodyMix; mode: "sing" | "play" | "speak" | "beatbox"; artic: Partial<HumanArtic>; tipFree: boolean; voiced: boolean; f0: number; speech: { text: string; ipa: boolean; rate: number }; beat: { steps: (BeatStep | null)[]; bpm: number; swing: number; preset: string | null; mic: boolean; follow: boolean } };
   params: Params;
   syllables: Syllable[];
   cursor: number;
@@ -57,7 +57,8 @@ function adopt(s: Snapshot): void {
   for (const [key, id] of Object.entries(SOURCE_PARAMS)) (source as unknown as Params)[key] = s.params[id];
   const artic = { ...initial.artic, ...s.settings.artic } as HumanArtic;
   for (const [key, id] of Object.entries(ARTIC_PARAMS)) (artic as unknown as Params)[key] = s.params[id];
-  useStore.setState({ started: true, mode: s.settings.mode, body: s.settings.body, source, artic, tipFree: s.settings.tipFree, volume: dbToVolume(s.params.gain), hold: false, heldNotes: [] });
+  const { mic, ...beat } = s.settings.beat;
+  useStore.setState({ started: true, mode: s.settings.mode, body: s.settings.body, source, artic, tipFree: s.settings.tipFree, volume: dbToVolume(s.params.gain), hold: false, heldNotes: [], mic, beat: { ...beat, playing: false, following: false, hostBpm: 0 } });
   useSing.setState({ lyrics: s.settings.lyrics, syllables: s.syllables, cursor: s.cursor, vibrato: s.params.vibrato });
   linesGeneration = s.speech.generation;
   const { text, ipa, rate } = s.settings.speech;
@@ -95,13 +96,13 @@ async function poll(): Promise<void> {
   const r = await fetch("/poll", { cache: "no-store" });
   const buf = await r.arrayBuffer();
   const h = new Float64Array(buf, 0, POLL_HEADER);
-  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, samples, n] = h;
+  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, beatStep, beatRunning, beatFollowing, hostBpm, samples, n] = h;
   if (n > 0) {
     const { t, nPh, nOr } = decodeTelemetry(new Float64Array(buf, 8 * POLL_HEADER, n), new Uint8Array(buf, 8 * (POLL_HEADER + n), TELE_LABELS));
     // a new voice's clock starts from zero: what's on the roll belongs to the old timeline
     if (t.clock < lastClock) clearPluginNotes();
     lastClock = t.clock;
-    engine.receive({ type: "telemetry", t, load: engine.load, body: { female, child }, nPh, nOr, beatStep: -1 });
+    engine.receive({ type: "telemetry", t, load: engine.load, body: { female, child }, nPh, nOr, beatStep });
   }
   // the output's samples, after the telemetry and its labels; a slice, because they may not be aligned
   if (samples > 0) {
@@ -135,6 +136,8 @@ async function poll(): Promise<void> {
   }
   if (speechCursor !== useSpeech.getState().cursor) useSpeech.setState({ cursor: speechCursor });
   void followSpoken(spokenSerial, spokenLine, spokenGeneration, spokenT0);
+  const beat = useStore.getState().beat;
+  if (beat.playing !== !!beatRunning || beat.following !== !!beatFollowing || beat.hostBpm !== hostBpm) useStore.setState({ beat: { ...beat, playing: !!beatRunning, following: !!beatFollowing, hostBpm } });
   const clock = engine.voiceClock() ?? 0;
   followPluginNote(note, sung, serial, clock);
   if (note !== shownNote) {

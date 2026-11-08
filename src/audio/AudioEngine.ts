@@ -244,8 +244,14 @@ export class AudioEngine {
     ipc({ type: "sayIpa", ipa });
   }
 
+  /** Whether the sequencer follows the host's transport. */
+  pluginFollowHost(on: boolean): void {
+    ipc({ type: "followHost", on });
+  }
+
   /** Route the voice through the close-mic chain (on) or straight to the output (off). */
   setMic(on: boolean): void {
+    if (inPlugin) return ipc({ type: "mic", on });
     if (on === this.micOn) return;
     this.micOn = on;
     if (!this.node || !this.master || !this.micIn) return;
@@ -253,7 +259,7 @@ export class AudioEngine {
     this.node.connect(on ? this.micIn : this.master);
   }
 
-  setBeat(m: { steps?: import("../wasm/types.ts").BeatStep[] | (import("../wasm/types.ts").BeatStep | null)[]; bpm?: number; swing?: number; playing?: boolean }): void {
+  setBeat(m: { steps?: import("../wasm/types.ts").BeatStep[] | (import("../wasm/types.ts").BeatStep | null)[]; bpm?: number; swing?: number; playing?: boolean; preset?: string | null }): void {
     this.send({ type: "beat", ...m });
   }
 

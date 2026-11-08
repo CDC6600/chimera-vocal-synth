@@ -1,6 +1,6 @@
 [package]
 name = "chimera-plugin"
-description = "CHIMERA as a CLAP, VST3 and AU instrument: MIDI notes sing the lyrics, with a webview editor"
+description = "CHIMERA as a CLAP, VST3 and AU instrument: MIDI notes sing, speak or beatbox, with a webview editor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

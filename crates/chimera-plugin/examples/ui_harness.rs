@@ -4,7 +4,7 @@
 //! `cargo run -p chimera-plugin --release --example ui_harness -- 8549`.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -44,6 +44,9 @@ fn voice_params(v: &HashMap<String, f32>) -> VoiceParams {
     VoiceParams { vibrato: g("vibrato"), vibrato_rate: g("vibrato_rate"), breath: g("breath"), pressed: g("pressed"), bright: g("bright"), breathy: g("breathy"), rough: g("rough"), fry: g("fry"), glide: g("glide"), ring: g("ring"), restart: g("restart") > 0.5 }
 }
 
+/// `seek`'s value when there's nothing to do (a negative f64's bits).
+const NO_SEEK: u64 = 0xBFF0_0000_0000_0000;
+
 /// Makes the page think it's in the plugin: `window.ipc` is what wry defines there.
 const IPC_SHIM: &str = "<script>window.ipc={postMessage:(m)=>fetch('/ipc',{method:'POST',body:m,keepalive:true})}</script>";
 
@@ -68,10 +71,13 @@ fn main() {
     // host-side notes and automation the test sends in, and whether the transport is playing
     let host_events: Arc<Mutex<Vec<Event>>> = Arc::new(Mutex::new(Vec::new()));
     let playing = Arc::new(AtomicBool::new(false));
+    // the transport's tempo, and where the test last moved it to (f64 bits)
+    let bpm = Arc::new(AtomicU64::new(120f64.to_bits()));
+    let seek = Arc::new(AtomicU64::new(NO_SEEK));
 
     // the audio thread: blocks of 256, in real time
     {
-        let (shared, values, host_events, playing, restore, params) = (shared.clone(), values.clone(), host_events.clone(), playing.clone(), restore.clone(), params.clone());
+        let (shared, values, host_events, playing, restore, params, bpm, seek) = (shared.clone(), values.clone(), host_events.clone(), playing.clone(), restore.clone(), params.clone(), bpm.clone(), seek.clone());
         std::thread::spawn(move || {
             let mut buf = vec![0.0f32; 256];
             let block = Duration::from_secs_f64(buf.len() as f64 / fs);
@@ -87,8 +93,18 @@ fn main() {
                     }
                 }
                 let on = playing.load(Ordering::Relaxed);
-                position = if on { position + 0.01 } else { 0.0 };
-                core.begin_block(&voice, Transport { playing: on, position: Some(position) }, &shared);
+                let tempo = f64::from_bits(bpm.load(Ordering::Relaxed));
+                let jump = f64::from_bits(seek.swap(NO_SEEK, Ordering::Relaxed));
+                if jump >= 0.0 {
+                    position = jump;
+                }
+                if !on {
+                    position = 0.0;
+                }
+                core.begin_block(&voice, Transport { playing: on, position: Some(position), beats: Some(position), tempo: Some(tempo), samples: buf.len() }, &shared);
+                if on {
+                    position += buf.len() as f64 / fs * tempo / 60.0;
+                }
                 for e in host_events.lock().unwrap().drain(..) {
                     core.event(e);
                 }
@@ -128,6 +144,13 @@ fn main() {
             }
             "/test/play" | "/test/stop" => {
                 playing.store(url == "/test/play", Ordering::Relaxed);
+                let _ = req.respond(tiny_http::Response::empty(204));
+            }
+            "/test/tempo" | "/test/seek" => {
+                let mut body = String::new();
+                let _ = req.as_reader().read_to_string(&mut body);
+                let x: f64 = body.trim().parse().unwrap_or(0.0);
+                if url == "/test/tempo" { &bpm } else { &seek }.store(x.to_bits(), Ordering::Relaxed);
                 let _ = req.respond(tiny_http::Response::empty(204));
             }
             "/test/param" => {

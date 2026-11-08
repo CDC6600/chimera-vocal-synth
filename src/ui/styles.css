@@ -2902,3 +2902,51 @@ input[type="range"]::-moz-range-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Beatbox in the plugin: a window has to show it all without scrolling, so the pads
+   spread across the width and the waterfall takes the room beside the transport */
+.in-plugin .right-beatbox {
+  grid-template-columns: minmax(0, 1fr) 272px;
+  /* no fr on the sequencer: fr tracks keep their ratio, so its minimum would inflate the waterfall */
+  grid-template-rows: minmax(min-content, 22%) minmax(min-content, 1fr) auto auto;
+  grid-template-areas: "seq seq" "wf transport" "pads pads" "keys keys";
+}
+/* ten rows of a readable height: its own rows would share out whatever it's given */
+.in-plugin .s-seq .screen-body {
+  min-height: 143px;
+}
+.in-plugin .s-pads .pads {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.in-plugin .s-pads .pad {
+  min-height: 44px;
+}
+/* each pad's tooltip still says how the sound is made */
+.in-plugin .s-pads .pad-air {
+  display: none;
+}
+.in-plugin .transport-top {
+  flex-wrap: nowrap;
+}
+.in-plugin .transport-top button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-inline: 6px;
+  white-space: nowrap;
+}
+.in-plugin .transport .presets {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.in-plugin .transport .presets::-webkit-scrollbar {
+  display: none;
+}
+.in-plugin .transport .presets .chip {
+  flex: none;
+}
+.in-plugin .sbn input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}

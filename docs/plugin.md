@@ -294,13 +294,19 @@ as on the website; a host starting takes over from it.
   beats, and doesn't say so. In such a host a tempo change moves the position, and the pattern jumps
   phase. Hosts that give beats, FL Studio among them, aren't affected.
 
-Output follows the host's positions, so the block-size independence test covers the steps' times to
-within rounding, not bit for bit. A free-running beat is bit-identical as before.
+The voice clock moves in control steps of 64 samples, so a hit's time is good to within one (1.5 ms at
+44.1 kHz). At block sizes that are multiples of 64 the output doesn't depend on block size, and it matches
+the website's sequencer to the sample for the same delay. A kick's peak varies with exactly when it falls
+(0.11 to 0.25 across delays, on the website's sequencer too), so a pattern's levels aren't all equal.
+
+**Layout.** At the plugin's window sizes the pads spread across the width and the waterfall sits beside
+the transport, and each pad's airstream moves to its tooltip, so the whole of Beatbox fits without
+scrolling. The website's layout doesn't change.
 
 **Notes.** Host notes below C4 (60) are pads, with General MIDI's drum kit mapped onto the ten mouth
 sounds, so a drum clip plays straight away, as beatbox rather than as its original kit: 35, 36 kick; 37
-rimshot; 38 snare; 39 click; 40 inward snare; 41, 43, 45, 47, 48, 50 lip pop; 42, 44 hi-hat; 46 open hat;
-49, 51, 52, 53, 55, 57, 59 crash. Others below 60 are ignored. C4 and up hum, two octaves down, so a bass
+rimshot; 38 snare; 39 click; 40 inward snare; 41, 43, 45, 47, 48, 50 lip pop; 42, 44, and the ride's 51,
+53, 59 hi-hat, since they keep time; 46 open hat; 49, 52, 55, 57 crash. Others below 60 are ignored. C4 and up hum, two octaves down, so a bass
 line sits on the keyboard's middle. Velocity sets the accent. The on-screen keys hum at the pitch they
 show, and the pads have their own buttons.
 

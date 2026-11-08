@@ -90,6 +90,10 @@ export function sendToPlugin(m: ToWorklet): void {
     case "stopSpeech":
       ipc({ type: "stopSpeech" });
       break;
+    case "beat":
+    case "beatHit":
+      ipc({ ...m });
+      break;
     // the rest is what the page plans and plays by itself on the website: here Rust does it
     default:
       break;

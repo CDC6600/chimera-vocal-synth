@@ -55,4 +55,5 @@ and the CLI) under a React UI. See the README.
 | `crates/chimera/` sound | re-bless goldens (above); `cargo run --release -q -p chimera --example bench` against the previous commit |
 | `crates/chimera-wasm/`, `src/wasm/`, `src/worklet/`, `src/main.tsx` | `bun run build && bun run preview`, then `bun tools/e2e.ts` |
 | `src/ui/`, `src/show/`, CSS | `bun run lint:layout` |
-| `crates/chimera-plugin/`, `src/audio/`, `src/ui/store.ts`, `src/ui/singing.ts`, `src/ui/pluginState.ts` | `bun run build`, `cargo build -p chimera-plugin --release --example ui_harness`, then `bun tools/plugin-e2e.ts` |
+| `crates/chimera-plugin/`, `src/audio/`, `src/ui/store.ts`, `src/ui/singing.ts`, `src/ui/speech.ts`, `src/ui/pluginState.ts` | `bun run build`, `cargo build -p chimera-plugin --release --example ui_harness`, then `bun tools/plugin-e2e.ts` |
+| the plugin's page or CSS | the harness (above), then `bun tools/layout-lint.ts --plugin --url http://127.0.0.1:8549/` |

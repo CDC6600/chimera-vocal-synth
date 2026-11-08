@@ -291,6 +291,44 @@ impl Engine {
         &self.beat
     }
 
+    /// Run the sequencer from a host's transport for this block: see [`BeatPlayer::follow`].
+    pub fn beat_follow(&mut self, beats: f64, beats_end: f64, bpm: f64, delay: f64) {
+        let voice = &mut self.voice;
+        let clock = voice.clock;
+        self.beat.follow(clock, beats, beats_end, bpm, delay, &mut |gs| voice.schedule(gs));
+    }
+
+    /// Stop following the host. Hits already scheduled would still sound, so they go too.
+    pub fn beat_stop_following(&mut self) {
+        if self.beat.following() {
+            self.beat.stop_following();
+            self.voice.cancel_score();
+        }
+    }
+
+    /// Set-up time this sound needs before its hit (s). No allocation.
+    pub fn beat_lead(&mut self, id: &str) -> f64 {
+        BeatPlayer::lead_in_with(id, self.body, &mut self.scratch)
+    }
+
+    /// Play one sound with its acoustic hit at `hit` on the voice clock, lasting `len` unless it's
+    /// released earlier by `tag`. No allocation.
+    pub fn beat_hit_at(&mut self, step: &BeatStep, hit: f64, len: f64, tag: Option<f64>) {
+        self.scratch.clear();
+        self.beat.gestures(step, hit, len, &mut self.scratch);
+        if tag.is_some() {
+            for g in self.scratch.iter_mut() {
+                g.tag = tag;
+            }
+        }
+        self.voice.schedule(&self.scratch);
+    }
+
+    /// End the gestures with this tag at this time on the voice clock.
+    pub fn release_at(&mut self, tag: f64, t: f64) {
+        self.voice.score.release(tag, t);
+    }
+
     /// Play one beatbox sound as soon as the mouth can make it.
     pub fn beat_hit(&mut self, step: &BeatStep) {
         self.scratch.clear();

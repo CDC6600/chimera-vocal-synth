@@ -8,7 +8,10 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use chimera::anatomy::human::{ArticPatch, BodyMix};
+use chimera::control::beat_player::BeatPlayer;
+use chimera::control::score::Label;
 use chimera::engine::{Engine, default_f0};
+use chimera::phonetics::beatbox::{BeatStep, beat_ready};
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::{SourcePatch, TELE_LABELS};
 use nih_plug::params::internals::ParamPtr;
@@ -26,10 +29,11 @@ const NOT_BUILT: &str = "<!doctype html><body style='background:#000;color:#fff;
 /// Scalars at the head of a `/poll` response (f64, little-endian), in order: revision,
 /// syllablesVersion, cursor, sung, note, noteSerial, busyNs, audioNs, loadPeak, faulted, playing, the
 /// telemetry's female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, linesGeneration,
-/// speechCursor, the number of output samples, and the number of telemetry values. Those follow (see
+/// speechCursor, beatStep, beatRunning, beatFollowing, hostBpm, the number of output samples, and the
+/// number of telemetry values. Those follow (see
 /// `TELE_HEADER`), then the `TELE_LABELS` bytes of active labels if there was telemetry, then the
 /// samples as f32. Keep in step with `src/ui/pluginState.ts`.
-pub const POLL_HEADER: usize = 21;
+pub const POLL_HEADER: usize = 25;
 
 /// The editor window's first size, and the limits of its grip (points).
 pub const WINDOW_DEFAULT: (u32, u32) = (1280, 800);
@@ -141,6 +145,10 @@ enum Command {
     StopSpeech,
     /// say this once (the consonant chart)
     SayIpa { ipa: String },
+    Beat { steps: Option<Vec<Option<BeatStep>>>, preset: Option<String>, bpm: Option<f64>, swing: Option<f64>, playing: Option<bool> },
+    BeatHit { id: String, note: Option<f64>, accent: Option<f64> },
+    Mic { on: bool },
+    FollowHost { on: bool },
 }
 
 /// A response to a request.
@@ -261,6 +269,10 @@ impl Bridge {
             f64::from_bits(s.spoken_t0.load(Ordering::Relaxed)),
             lines_generation as f64,
             s.speech_cursor.load(Ordering::Relaxed) as f64,
+            s.beat_step.load(Ordering::Relaxed) as f64,
+            s.beat_running.load(Ordering::Relaxed) as u8 as f64,
+            s.beat_following.load(Ordering::Relaxed) as u8 as f64,
+            f64::from_bits(s.host_bpm.load(Ordering::Relaxed)),
             scope.len() as f64,
             n as f64,
         ];
@@ -355,8 +367,21 @@ impl Bridge {
                 shared.send_speech(plan_lines(&speech, body, g2p()), false);
             }
             Command::Mode { mode } => {
-                settings().mode = mode;
-                shared.edit(|p| p.mode = Some(mode));
+                let mut s = settings();
+                s.mode = mode;
+                // a beatboxer waits with the jaw nearly closed: part of the same change, so that a
+                // note held in the old mode or a restore can't come between them
+                let ready = (mode == Mode::Beatbox).then(|| beat_ready(s.body));
+                if let Some(ready) = &ready {
+                    s.artic.merge(ready);
+                }
+                drop(s);
+                shared.edit(|p| {
+                    p.mode = Some(mode);
+                    if let Some(ready) = &ready {
+                        p.artic.merge(ready);
+                    }
+                });
             }
             Command::Artic { values, tip_free } => {
                 {
@@ -415,6 +440,42 @@ impl Bridge {
             }
             Command::Speak => shared.edit(|p| p.speak_next = true),
             Command::StopSpeech => shared.edit(|p| p.stop_speech = true),
+            Command::Beat { steps, preset, bpm, swing, playing } => {
+                let steps = steps.map(|mut st| {
+                    st.truncate(BeatPlayer::MAX_STEPS);
+                    st
+                });
+                {
+                    let mut s = settings();
+                    if let Some(st) = &steps {
+                        s.beat.steps = st.clone();
+                        s.beat.preset = preset;
+                    }
+                    if let Some(b) = bpm {
+                        s.beat.bpm = b;
+                    }
+                    if let Some(w) = swing {
+                        s.beat.swing = w;
+                    }
+                }
+                if let Some(st) = steps {
+                    shared.send_beat_steps(st);
+                }
+                shared.edit(|p| {
+                    p.beat_bpm = bpm.or(p.beat_bpm);
+                    p.beat_swing = swing.or(p.beat_swing);
+                    p.beat_playing = playing.or(p.beat_playing);
+                });
+            }
+            Command::BeatHit { id, note, accent } => shared.ui_hit(BeatStep { id: Label::new(&id), note, accent }),
+            Command::Mic { on } => {
+                settings().beat.mic = on;
+                shared.edit(|p| p.mic = Some(on));
+            }
+            Command::FollowHost { on } => {
+                settings().beat.follow = on;
+                shared.edit(|p| p.follow_host = Some(on));
+            }
             Command::SayIpa { ipa } => {
                 let (body, rate) = {
                     let s = settings();

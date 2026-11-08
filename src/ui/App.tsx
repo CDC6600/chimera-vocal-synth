@@ -70,6 +70,7 @@ function TopBar() {
                 { value: "sing", label: "Sing" },
                 { value: "play", label: "Play" },
                 { value: "speak", label: "Speak" },
+                { value: "beatbox", label: "Beatbox" },
               ]
             : [
                 { value: "play", label: "Play" },
@@ -246,7 +247,7 @@ export function App() {
 function Wall() {
   const mode = useStore((s) => s.mode);
   return (
-    <div className={`app mode-${mode}`}>
+    <div className={`app mode-${mode}${inPlugin ? " in-plugin" : ""}`}>
       <TopBar />
       <main className={`wall wall-${mode}`}>
         <LeftScreen />

@@ -20,6 +20,10 @@ export interface BeatState {
   playing: boolean;
   /** preset the pattern came from (null once edited) */
   preset: string | null;
+  /** in the plugin: the sequencer follows the host's transport (the setting), it is doing so now, and the host's tempo */
+  follow: boolean;
+  following: boolean;
+  hostBpm: number;
 }
 
 export interface ViewOptions {
@@ -66,6 +70,7 @@ interface State {
   toggleBeatStep: (i: number, id: string) => void;
   setBeatTempo: (v: { bpm?: number; swing?: number }) => void;
   setBeatPlaying: (on: boolean) => void;
+  setBeatFollow: (on: boolean) => void;
   loadBeatPreset: (name: string) => void;
   beatHit: (id: string) => void;
   setMic: (on: boolean) => void;
@@ -143,8 +148,8 @@ export const useStore = create<State>((set, get) => ({
     const prev = get().mode;
     if (prev === m) return;
     if (inPlugin) {
-      // Rust stops the notes and the breath when the mode changes
-      set({ mode: m, heldNotes: [], hold: false });
+      // Rust stops the notes and the breath when the mode changes, and sets Beatbox's posture
+      set((s) => ({ mode: m, heldNotes: [], hold: false, artic: m === "beatbox" ? { ...s.artic, ...beatReady(s.body) } : s.artic }));
       engine.pluginMode(m);
       return;
     }
@@ -182,12 +187,12 @@ export const useStore = create<State>((set, get) => ({
     set({ keyCall: id, heldNotes: [] });
     updateGate(get());
   },
-  beat: { steps: parseBeat(FIRST_BEAT.text), bpm: FIRST_BEAT.bpm, swing: FIRST_BEAT.swing, playing: false, preset: FIRST_BEAT.name },
+  beat: { steps: parseBeat(FIRST_BEAT.text), bpm: FIRST_BEAT.bpm, swing: FIRST_BEAT.swing, playing: false, preset: FIRST_BEAT.name, follow: true, following: false, hostBpm: 0 },
   mic: true,
   bassNote: BASS_NOTE,
   setBeatSteps: (steps, preset = null) => {
     set((s) => ({ beat: { ...s.beat, steps, preset } }));
-    engine.setBeat({ steps });
+    engine.setBeat({ steps, preset });
   },
   toggleBeatStep: (i, id) => {
     const steps = get().beat.steps.slice();
@@ -201,6 +206,10 @@ export const useStore = create<State>((set, get) => ({
   setBeatPlaying: (on) => {
     if (on === get().beat.playing) return;
     set((s) => ({ beat: { ...s.beat, playing: on } }));
+    if (inPlugin) {
+      engine.setBeat({ playing: on });
+      return;
+    }
     if (!on) {
       engine.setBeat({ playing: false });
       return;
@@ -211,6 +220,10 @@ export const useStore = create<State>((set, get) => ({
         const b = get().beat;
         if (get().started && b.playing) engine.setBeat({ steps: b.steps, bpm: b.bpm, swing: b.swing, playing: true });
       });
+  },
+  setBeatFollow: (on) => {
+    set((s) => ({ beat: { ...s.beat, follow: on } }));
+    engine.pluginFollowHost(on);
   },
   loadBeatPreset: (name) => {
     const p = BEAT_PRESETS.find((x) => x.name === name);
@@ -227,7 +240,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setMic: (on) => {
     set({ mic: on });
-    if (get().mode === "beatbox") engine.setMic(on);
+    if (inPlugin || get().mode === "beatbox") engine.setMic(on);
   },
   setCreature: (id) => {
     if (id === get().creature) return;
@@ -306,6 +319,8 @@ export const useStore = create<State>((set, get) => ({
     const held = get().heldNotes.filter((n) => n !== midi).concat(midi);
     set({ heldNotes: held });
     if (inPlugin) {
+      // new hum steps take the last key played
+      if (get().mode === "beatbox") set({ bassNote: midi });
       engine.pluginNote(midi, true, velocity);
       return;
     }

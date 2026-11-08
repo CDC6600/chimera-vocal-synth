@@ -1,4 +1,4 @@
-//! CHIMERA as an audio plugin: MIDI notes sing the lyrics, one syllable per note. nih-plug makes it a
+//! CHIMERA as an audio plugin: MIDI notes sing, speak or beatbox. nih-plug makes it a
 //! CLAP plugin and `clap-wrapper` adds VST3 and AUv2 to the same binary. On macOS the editor is a
 //! system webview (WKWebView) showing the React UI. See docs/plugin.md.
 
@@ -13,6 +13,7 @@ use chimera::voice::human_voice::DEFAULT_SOURCE;
 use nih_plug::prelude::*;
 
 pub mod bridge;
+pub mod close_mic;
 pub mod core;
 #[cfg(target_os = "macos")]
 mod editor;
@@ -186,11 +187,12 @@ impl Plugin for Chimera {
     }
 
     // Runs where the host activates or restores, with `process` held off by nih-plug's plugin lock.
-    fn initialize(&mut self, _layout: &AudioIOLayout, config: &BufferConfig, _context: &mut impl InitContext<Self>) -> bool {
+    fn initialize(&mut self, _layout: &AudioIOLayout, config: &BufferConfig, context: &mut impl InitContext<Self>) -> bool {
         let fs = config.sample_rate as f64;
         self.core = rebuild(&self.params, &self.shared, self.params.voice(), fs);
-        if self.core.is_none() {
-            nih_error!("CHIMERA needs a sample rate of at least {MIN_SAMPLE_RATE} Hz; it stays silent");
+        match &self.core {
+            Some(core) => context.set_latency_samples(core.latency_samples()),
+            None => nih_error!("CHIMERA needs a sample rate of at least {MIN_SAMPLE_RATE} Hz; it stays silent"),
         }
         self.mono = vec![0.0; config.max_buffer_size as usize];
         true
@@ -217,8 +219,11 @@ impl Plugin for Chimera {
 
         let ok = catch_unwind(AssertUnwindSafe(|| {
             let t = context.transport();
-            let transport = Transport { playing: t.playing, position: t.pos_beats().or_else(|| t.pos_samples().map(|s| s as f64)) };
+            let beats = t.pos_beats();
+            let transport = Transport { playing: t.playing, position: beats.or_else(|| t.pos_samples().map(|s| s as f64)), beats, tempo: t.tempo, samples: n };
             core.begin_block(&params.voice(), transport, &shared);
+            // Beatbox has latency and the other modes don't: nih-plug tells the host if this changed
+            context.set_latency_samples(core.latency_samples());
             // split the block at each event, so notes start on their sample
             let mut at = 0;
             while let Some(ev) = context.next_event() {

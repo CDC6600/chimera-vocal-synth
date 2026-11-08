@@ -2,6 +2,7 @@
 //! body swap, new lyrics, telemetry, reset.
 use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
 use chimera::engine::Engine;
+use chimera::phonetics::beatbox::{BeatStep, parse_beat};
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::SourcePatch;
 use chimera_plugin::core::{Core, Event, Mode, Prepared, Settings, Shared, Transport, UiNote, VoiceParams};
@@ -58,7 +59,7 @@ fn the_audio_threads_path_does_not_allocate() {
         c.end_block(buf.len(), &shared);
         shared.feed_scope(buf);
     };
-    let t = Transport { playing: true, position: Some(0.0) };
+    let t = Transport { playing: true, position: Some(0.0), ..Default::default() };
 
     // what the main thread prepares (it may allocate) between the blocks that take it
     let voices = [BodyMix::MALE, BodyMix::FEMALE, BodyMix::new(0.5, 0.2)].map(|b| (Engine::prepare_voice(44100.0, b), b));
@@ -72,6 +73,8 @@ fn the_audio_threads_path_does_not_allocate() {
     let mut speeches = speeches.into_iter();
     let pads: Vec<_> = (0..5).map(|_| plan_pad("ˈɑpɑ", BodyMix::MALE, 1.0)).collect();
     let mut pads = pads.into_iter();
+    let patterns: Vec<_> = ["B t Pf t", "B . . . m:43 . . . tss K ^K ! P! kch"].iter().map(|t| parse_beat(t)).collect();
+    let mut patterns = patterns.into_iter();
 
     let mut total = (0usize, 0usize);
     let mut measured = |c: &mut Core, p: &VoiceParams, t: Transport, buf: &mut [f32], evs: &[Event]| {
@@ -142,10 +145,40 @@ fn the_audio_threads_path_does_not_allocate() {
             shared.send_pad(pad);
         }
         measured(&mut c, &params(), t, &mut buf, &[]);
+        // Beatbox, following the host: steps, pads, both owners' keys, the close mic, a new pattern
+        shared.edit(|p| p.mode = Some(Mode::Beatbox));
+        let at = |beats: f64| Transport { playing: true, position: Some(beats), beats: Some(beats), tempo: Some(140.0), samples: 512 };
+        measured(&mut c, &params(), at(0.0), &mut buf, &[Event::NoteOn { midi: 36, velocity: 110.0 }]);
+        measured(&mut c, &params(), at(0.03), &mut buf, &[Event::NoteOn { midi: 64, velocity: 96.0 }, Event::NoteOn { midi: 38, velocity: 90.0 }]);
+        shared.ui_note(UiNote { midi: 64, velocity: 96.0, on: true });
+        shared.ui_hit(BeatStep::new("K"));
+        if let Some(steps) = patterns.next() {
+            shared.send_beat_steps(steps);
+        }
+        measured(&mut c, &params(), at(0.06), &mut buf, &[]);
+        shared.ui_note(UiNote { midi: 64, velocity: 96.0, on: false });
+        shared.edit(|p| {
+            p.mic = Some(round % 2 == 0);
+            p.beat_bpm = Some(100.0);
+            p.beat_swing = Some(0.2);
+        });
+        // steps for a while, then a loop back, and a host stop
+        let mut beats = 0.09;
+        for _ in 0..40 {
+            measured(&mut c, &params(), at(beats), &mut buf, &[]);
+            beats += 0.027;
+        }
+        measured(&mut c, &params(), at(0.0), &mut buf, &[Event::NoteOff { midi: 64 }]);
+        measured(&mut c, &params(), Transport::default(), &mut buf, &[Event::NoteOn { midi: 64, velocity: 96.0 }, Event::NoteOff { midi: 64 }]);
+        // and running by itself while the host is stopped
+        shared.edit(|p| p.beat_playing = Some(true));
+        for _ in 0..10 {
+            measured(&mut c, &params(), Transport::default(), &mut buf, &[Event::NoteOn { midi: 42, velocity: 96.0 }]);
+        }
         shared.edit(|p| p.mode = Some(Mode::Sing));
         measured(&mut c, &params(), t, &mut buf, &[]);
         // the transport: a stop, a start, a loop
-        measured(&mut c, &params(), Transport { playing: false, position: Some(1.0) }, &mut buf, &[]);
+        measured(&mut c, &params(), Transport { playing: false, position: Some(1.0), ..Default::default() }, &mut buf, &[]);
         measured(&mut c, &params(), t, &mut buf, &[]);
         c.reset();
     }

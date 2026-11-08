@@ -29,7 +29,7 @@ export type ToWorklet =
   | { type: "call"; id: string; pitch?: number; amp?: number }
   | { type: "stopCall" }
   /** beatbox sequencer: any subset of its state */
-  | { type: "beat"; steps?: (BeatStep | null)[]; bpm?: number; swing?: number; playing?: boolean }
+  | { type: "beat"; steps?: (BeatStep | null)[]; bpm?: number; swing?: number; playing?: boolean; preset?: string | null }
   /** end the open-ended gestures with this tag now (a sung note released) */
   | { type: "release"; tag: number }
   /** play one beatbox sound as soon as the mouth can make it */

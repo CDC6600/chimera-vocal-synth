@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { engine } from "../../audio/AudioEngine.ts";
+import { inPlugin } from "../../audio/pluginBridge.ts";
 import { BEAT_SOUNDS, BEAT_PRESETS, formatBeat, parseBeat, type Airstream } from "../../wasm/engine.ts";
 import { Keys } from "./Keys.tsx";
 import { Chip, Screen } from "./Screen.tsx";
@@ -137,6 +138,7 @@ function Transport() {
   const setTempo = useStore((s) => s.setBeatTempo);
   const setPlaying = useStore((s) => s.setBeatPlaying);
   const setSteps = useStore((s) => s.setBeatSteps);
+  const setFollow = useStore((s) => s.setBeatFollow);
   const loadPreset = useStore((s) => s.loadBeatPreset);
   const mic = useStore((s) => s.mic);
   const setMic = useStore((s) => s.setMic);
@@ -148,12 +150,17 @@ function Transport() {
   return (
     <div className="transport">
       <div className="transport-top">
-        <button className={`primary play${beat.playing ? " on" : ""}`} onClick={() => setPlaying(!beat.playing)} aria-pressed={beat.playing}>
-          {beat.playing ? "Stop" : "Play beat"}
+        <button className={`primary play${beat.playing ? " on" : ""}`} onClick={() => setPlaying(!beat.playing)} aria-pressed={beat.playing} disabled={beat.following} title={beat.following ? "The host's transport is running the beat" : undefined}>
+          {beat.following ? "With host" : beat.playing ? "Stop" : "Play beat"}
         </button>
         <Chip on={mic} onClick={() => setMic(!mic)}>
           Close mic
         </Chip>
+        {inPlugin && (
+          <Chip on={beat.follow} onClick={() => setFollow(!beat.follow)} title="Run the pattern with the host's transport, at its tempo">
+            Follow
+          </Chip>
+        )}
       </div>
       <div className="transport-encoders">
         <EncoderPages
@@ -163,7 +170,7 @@ function Transport() {
             {
               name: "Tempo",
               encoders: [
-                { label: "Tempo", value: beat.bpm, min: 60, max: 180, onChange: (v) => setTempo({ bpm: Math.round(v) }), format: (v) => ({ value: String(Math.round(v)), unit: "bpm" }) },
+                { label: "Tempo", value: beat.following ? beat.hostBpm : beat.bpm, min: 60, max: 180, onChange: (v) => setTempo({ bpm: Math.round(v) }), format: (v) => ({ value: String(Math.round(v)), unit: "bpm" }) },
                 { label: "Swing", value: beat.swing, min: 0, max: 0.6, onChange: (v) => setTempo({ swing: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
               ],
             },
@@ -205,10 +212,10 @@ export function BeatboxRight() {
   const beat = useStore((s) => s.beat);
   return (
     <div className="right right-beatbox">
-      <Screen className="s-seq" title="Step sequencer" sub={`${beat.preset ?? "Your beat"} / ${beat.bpm} bpm`}>
+      <Screen className="s-seq" title="Step sequencer" sub={`${beat.preset ?? "Your beat"} / ${Math.round(beat.following ? beat.hostBpm : beat.bpm)} bpm`}>
         <Sequencer />
       </Screen>
-      <Screen className="s-wf" title="Spectrogram" sub="Last two seconds / newest in front">
+      <Screen className="s-wf" title="Spectrogram" sub={inPlugin ? "Last two seconds" : "Last two seconds / newest in front"}>
         <Spectrogram />
       </Screen>
       <Screen className="s-pads" title="Pads" sub="Keys 1 to 0">

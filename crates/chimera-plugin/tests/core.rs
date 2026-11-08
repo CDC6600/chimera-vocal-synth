@@ -1,9 +1,11 @@
 //! The instrument without a host: what it sings, and how it behaves on the audio thread.
 use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
 use chimera::engine::Engine;
+use chimera::control::beat_player::BeatPlayer;
 use chimera::phonetics::Syllable;
+use chimera::phonetics::beatbox::{BEAT_SOUNDS, parse_beat};
 use chimera::phonetics::syllables::lyrics_to_syllables;
-use chimera_plugin::core::{Core, DEFAULT_LYRICS, Event, Mode, NOT_SPEAKING, Prepared, SAYING_PAD, Settings, Shared, Transport, UiNote, VoiceParams};
+use chimera_plugin::core::{BEAT_LATENCY, BeatSettings, Core, DEFAULT_LYRICS, Event, Mode, NOT_SPEAKING, Prepared, SAYING_PAD, Settings, Shared, Transport, UiNote, VoiceParams, drum_pad};
 use chimera_plugin::g2p;
 use chimera_plugin::speech::{SpeechSettings, plan_lines, plan_pad};
 use std::sync::atomic::Ordering;
@@ -246,7 +248,7 @@ fn the_transport_restarts_the_lyrics_and_stops_the_notes() {
     let mut c = core(&shared);
     let mut block = vec![0.0f32; 256];
     let mut step = |c: &mut Core, playing: bool, position: f64, ev: Option<Event>| {
-        c.begin_block(&params(), Transport { playing, position: Some(position) }, &shared);
+        c.begin_block(&params(), Transport { playing, position: Some(position), ..Default::default() }, &shared);
         if let Some(e) = ev {
             c.event(e);
         }
@@ -285,15 +287,15 @@ fn live_playing_can_keep_its_place_through_the_transport() {
     let mut c = core(&shared);
     let mut block = vec![0.0f32; 256];
     let no_restart = VoiceParams { restart: false, ..params() };
-    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0) }, &shared);
+    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0), ..Default::default() }, &shared);
     c.event(on(60));
     c.event(off(60));
     c.render(&mut block);
-    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0) }, &shared);
+    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0), ..Default::default() }, &shared);
     c.render(&mut block);
     assert_eq!(c.singer().cursor(), 1);
-    c.begin_block(&no_restart, Transport { playing: false, position: Some(0.0) }, &shared);
-    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0) }, &shared);
+    c.begin_block(&no_restart, Transport { playing: false, position: Some(0.0), ..Default::default() }, &shared);
+    c.begin_block(&no_restart, Transport { playing: true, position: Some(0.0), ..Default::default() }, &shared);
     assert_eq!(c.singer().cursor(), 1);
 }
 
@@ -733,4 +735,355 @@ fn the_output_reaches_the_editor_only_while_it_watches() {
     }
     let scope = shared.scope.lock().unwrap();
     assert_eq!((scope.len(), scope.capacity()), (cap, cap));
+}
+
+// ---------------------------------------------------------------- Beatbox
+
+fn beatboxing(pattern: &str, shared: &Shared) -> Core {
+    // in the ready posture, as the mode command leaves it
+    let artic = chimera::phonetics::beatbox::beat_ready(BodyMix::MALE);
+    let settings = Settings { mode: Mode::Beatbox, artic, beat: BeatSettings { steps: parse_beat(pattern), mic: false, ..Default::default() }, ..Default::default() };
+    core_with(&settings, shared)
+}
+
+/// The host, playing from `beats` for this many samples: each block's position and tempo.
+struct Host {
+    beats: f64,
+    bpm: f64,
+}
+
+impl Host {
+    fn block(&mut self, c: &mut Core, shared: &Shared, out: &mut [f32], events: &[Event]) {
+        c.begin_block(&params(), Transport { playing: true, position: Some(self.beats), beats: Some(self.beats), tempo: Some(self.bpm), samples: out.len() }, shared);
+        for e in events {
+            c.event(*e);
+        }
+        c.render(out);
+        c.end_block(out.len(), shared);
+        self.beats += out.len() as f64 / FS * self.bpm / 60.0;
+    }
+
+    fn play(&mut self, c: &mut Core, shared: &Shared, seconds: f64) -> Vec<f32> {
+        let mut out = vec![0.0f32; (seconds * FS) as usize];
+        for block in out.chunks_mut(512) {
+            self.block(c, shared, block, &[]);
+        }
+        out
+    }
+}
+
+/// Where each burst of sound starts (s): louder than the threshold after a quiet stretch.
+fn onsets(x: &[f32], threshold: f32) -> Vec<f64> {
+    let mut found = Vec::new();
+    let mut quiet = usize::MAX;
+    for (i, s) in x.iter().enumerate() {
+        if s.abs() >= threshold {
+            if quiet > (0.05 * FS) as usize {
+                found.push(i as f64 / FS);
+            }
+            quiet = 0;
+        } else if quiet != usize::MAX {
+            quiet += 1;
+        }
+    }
+    found
+}
+
+#[test]
+fn every_sound_fits_in_the_reported_latency() {
+    for s in BEAT_SOUNDS.iter() {
+        for body in [BodyMix::MALE, BodyMix::FEMALE, BodyMix::CHILD] {
+            let lead = BeatPlayer::lead_in(s.id, body);
+            assert!(lead <= BEAT_LATENCY, "{} needs {lead}", s.id);
+        }
+    }
+}
+
+#[test]
+fn only_beatbox_has_latency() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B . . .", &shared);
+    assert_eq!(c.latency_samples(), (BEAT_LATENCY * FS).round() as u32);
+    for (mode, expect) in [(Mode::Sing, 0), (Mode::Beatbox, (BEAT_LATENCY * FS).round() as u32), (Mode::Speak, 0), (Mode::Play, 0)] {
+        shared.edit(|p| p.mode = Some(mode));
+        run(&mut c, &shared, &[], 256, |_| 256);
+        assert_eq!(c.latency_samples(), expect, "{mode:?}");
+    }
+}
+
+/// The whole point: after the host takes off the reported latency, a kick on the beat is on the beat,
+/// including the very first one.
+#[test]
+fn hits_land_on_the_grid_after_the_reported_latency() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B . . . . . . .", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    let out = host.play(&mut c, &shared, 4.2);
+    let threshold = peak(&out) * 0.25;
+    let hits = onsets(&out, threshold);
+    eprintln!("kicks at {hits:?} (peak {})", peak(&out));
+    assert!(hits.len() >= 4, "{hits:?}");
+    for (i, t) in hits.iter().enumerate() {
+        // on the beat, every two beats (one second at 120 bpm), after the latency
+        let grid = i as f64 + BEAT_LATENCY;
+        assert!((t - grid).abs() < 0.02, "kick {i} at {t}, grid {grid}: {hits:?}");
+    }
+    // the first has had its full set-up, so it's a real kick. Only roughly: a kick's peak depends on
+    // exactly when it falls (0.11 to 0.25 across delays, on the website's sequencer too)
+    let level = |i: usize| {
+        let at = (hits[i] * FS) as usize;
+        peak(&out[at..at + (0.1 * FS) as usize])
+    };
+    assert!(level(0) > 0.35 * level(1), "first {}, second {}", level(0), level(1));
+}
+
+#[test]
+fn a_loop_keeps_the_beat_going_and_stays_on_the_grid() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B . . . . . . .", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    let mut all = Vec::new();
+    // a one-bar loop, four times
+    for _ in 0..4 {
+        host.beats = 0.0;
+        all.extend(host.play(&mut c, &shared, 2.0));
+    }
+    let hits = onsets(&all, peak(&all) * 0.25);
+    eprintln!("kicks over a loop at {hits:?}");
+    assert_eq!(hits.len(), 8, "{hits:?}");
+    for (i, t) in hits.iter().enumerate() {
+        assert!((t - (i as f64 + BEAT_LATENCY)).abs() < 0.02, "kick {i} at {t}: {hits:?}");
+    }
+}
+
+#[test]
+fn the_host_stopping_silences_what_was_on_its_way() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    host.play(&mut c, &shared, 0.5);
+    assert!(c.engine().score().size() > 0);
+    assert!(shared.beat_running.load(Ordering::Relaxed) && shared.beat_following.load(Ordering::Relaxed));
+    c.begin_block(&params(), Transport::default(), &shared);
+    c.render(&mut [0.0; 256]);
+    c.end_block(256, &shared);
+    assert_eq!(c.engine().score().size(), 0);
+    assert!(!shared.beat_running.load(Ordering::Relaxed));
+    assert_eq!(shared.beat_step.load(Ordering::Relaxed), -1);
+}
+
+#[test]
+fn the_button_runs_the_beat_while_the_host_is_stopped_and_the_host_takes_over() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    let tempo = c.engine().beat().bpm;
+    shared.edit(|p| p.beat_playing = Some(true));
+    let out = run(&mut c, &shared, &[], (FS * 0.6) as usize, |_| 256);
+    assert!(peak(&out) > 0.001 && shared.beat_running.load(Ordering::Relaxed) && !shared.beat_following.load(Ordering::Relaxed));
+    let mut host = Host { beats: 0.0, bpm: 150.0 };
+    host.play(&mut c, &shared, 0.1);
+    assert!(shared.beat_following.load(Ordering::Relaxed), "the host takes over");
+    assert!(!c.engine().beat().playing);
+    assert_eq!(c.engine().beat().bpm, 150.0);
+    // pressing the button meanwhile changes nothing
+    shared.edit(|p| p.beat_playing = Some(true));
+    host.play(&mut c, &shared, 0.1);
+    assert!(!c.engine().beat().playing);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.engine().beat().bpm, tempo, "the user's tempo is back once the host stops");
+    // told not to follow, the host's playing doesn't start it
+    shared.edit(|p| p.follow_host = Some(false));
+    host.play(&mut c, &shared, 0.1);
+    assert!(!shared.beat_running.load(Ordering::Relaxed), "not following");
+    // a host that gives no position or tempo can't be followed
+    shared.edit(|p| p.follow_host = Some(true));
+    c.begin_block(&params(), Transport { playing: true, position: Some(0.0), beats: None, tempo: None, samples: 256 }, &shared);
+    c.render(&mut [0.0; 256]);
+    c.end_block(256, &shared);
+    assert!(!shared.beat_following.load(Ordering::Relaxed));
+}
+
+#[test]
+fn drum_notes_play_their_pads_on_the_general_midi_map() {
+    assert_eq!(drum_pad(36), Some("B"));
+    assert_eq!(drum_pad(38), Some("Pf"));
+    assert_eq!(drum_pad(42), Some("t"));
+    assert_eq!(drum_pad(46), Some("tss"));
+    assert_eq!(drum_pad(49), Some("kch"));
+    assert_eq!(drum_pad(34), None);
+    // every tom, not just the low ones
+    assert!([41, 43, 45, 47, 48, 50].iter().all(|m| drum_pad(*m) == Some("P!")));
+    // everything named on the map is a sound that exists
+    for m in 0..60 {
+        if let Some(id) = drum_pad(m) {
+            assert!(chimera::phonetics::beatbox::beat_sound(id).is_some(), "{m} -> {id}");
+        }
+    }
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    let size = |c: &Core| c.engine().score().size();
+    run(&mut c, &shared, &[(0, on(30)), (10, on(54))], 256, |_| 256);
+    assert_eq!(size(&c), 0, "notes off the map do nothing");
+    run(&mut c, &shared, &[(0, on(36)), (10, off(36))], 256, |_| 256);
+    assert!(size(&c) > 0, "a kick");
+}
+
+/// While the host plays, a note's hit goes the latency after it, to land on the grid; while it's
+/// stopped, as soon as the mouth can make it, because someone is auditioning.
+#[test]
+fn a_note_waits_for_the_grid_only_while_the_host_plays() {
+    let latest_start = |c: &Core| c.engine().score().gestures().iter().map(|g| g.t0 - g.ramp_in).fold(f64::INFINITY, f64::min) - c.engine().clock();
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    run(&mut c, &shared, &[(0, on(36))], 16, |_| 16);
+    let stopped = latest_start(&c);
+    assert!(stopped.abs() < 0.01, "stopped: starts now, {stopped}");
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    host.block(&mut c, &shared, &mut [0.0; 16], &[on(36)]);
+    let playing = latest_start(&c);
+    let lead = BeatPlayer::lead_in("B", BodyMix::MALE);
+    assert!((playing - (BEAT_LATENCY - lead)).abs() < 0.01, "playing: its set-up starts {} early, got {playing}", BEAT_LATENCY - lead);
+}
+
+fn hum_pitches(c: &Core) -> Vec<f64> {
+    use chimera::control::score::ControlKey;
+    let clock = c.engine().clock();
+    c.engine().score().gestures().iter().filter(|g| g.tag == Some(-1.0) && g.t1 > clock + 1.0).filter_map(|g| g.targets.get(ControlKey::F0)).collect()
+}
+
+/// Found by review: host note 60 hums C2 and on-screen 60 hums C4, and the shared press masks would
+/// have treated them as one key.
+#[test]
+fn the_hosts_and_the_pages_keys_hum_separately() {
+    let shared = Shared::default();
+    let mut c = beatboxing(". . . .", &shared);
+    let c2 = chimera::math::midi_to_hz(36.0);
+    let c4 = chimera::math::midi_to_hz(60.0);
+    let close = |got: Vec<f64>, want: f64, what: &str| assert!(got.len() == 1 && (got[0] - want).abs() < 1e-6, "{what}: {got:?}, want {want}");
+    run(&mut c, &shared, &[(0, on(60))], 16, |_| 16);
+    close(hum_pitches(&c), c2, "host C4 hums two octaves down");
+    shared.ui_note(UiNote { midi: 60, velocity: 96.0, on: true });
+    run(&mut c, &shared, &[], 16, |_| 16);
+    close(hum_pitches(&c), c4, "the page's C4 isn't suppressed by it");
+    shared.ui_note(UiNote { midi: 60, velocity: 96.0, on: false });
+    run(&mut c, &shared, &[], 16, |_| 16);
+    close(hum_pitches(&c), c2, "and back to the host's, still held");
+    run(&mut c, &shared, &[(0, off(60))], 16, |_| 16);
+    assert!(hum_pitches(&c).is_empty(), "nothing left humming");
+    // the other way round, and a window closing with a key down
+    shared.ui_note(UiNote { midi: 60, velocity: 96.0, on: true });
+    run(&mut c, &shared, &[], 16, |_| 16);
+    close(hum_pitches(&c), c4, "the page's");
+    run(&mut c, &shared, &[(0, on(60))], 16, |_| 16);
+    close(hum_pitches(&c), c2, "the host's isn't suppressed either");
+    run(&mut c, &shared, &[(0, off(60))], 16, |_| 16);
+    close(hum_pitches(&c), c4, "back to the page's");
+    shared.clear_ui_keys();
+    run(&mut c, &shared, &[], 16, |_| 16);
+    assert!(hum_pitches(&c).is_empty(), "the window closed");
+    // a hum is heard, and ends when let go
+    let out = run(&mut c, &shared, &[(0, on(72)), ((FS * 0.8) as usize, off(72))], (FS * 1.6) as usize, |_| 256);
+    let window = |a: f64, b: f64| peak(&out[(a * FS) as usize..(b * FS) as usize]);
+    assert!(window(0.4, 0.7) > 0.001, "humming: {}", window(0.4, 0.7));
+    assert!(window(1.3, 1.6) < 0.2 * window(0.4, 0.7), "let go: {} after {}", window(1.3, 1.6), window(0.4, 0.7));
+}
+
+#[test]
+fn leaving_beatbox_stops_the_beat_and_the_close_mic() {
+    let shared = Shared::default();
+    let mut c = beatboxing("B t Pf t", &shared);
+    shared.edit(|p| p.mic = Some(true));
+    let mut host = Host { beats: 0.0, bpm: 120.0 };
+    let loud = host.play(&mut c, &shared, 0.6);
+    assert!(peak(&loud) > 0.0);
+    shared.edit(|p| p.mode = Some(Mode::Play));
+    host.play(&mut c, &shared, 0.05);
+    assert!(!shared.beat_running.load(Ordering::Relaxed));
+    assert_eq!(shared.beat_step.load(Ordering::Relaxed), -1);
+    assert_eq!(c.engine().score().size(), 0);
+}
+
+/// The chain's response and its stability, where a filter would show trouble.
+#[test]
+fn the_close_mic_lifts_the_low_end_tames_peaks_and_stays_stable() {
+    use chimera_plugin::close_mic::CloseMic;
+    for fs in [44100.0, 48000.0, 96000.0, 192000.0] {
+        let tone = |hz: f64, amp: f32| -> f32 {
+            let mut mic = CloseMic::new(fs);
+            let mut x: Vec<f32> = (0..(fs * 0.5) as usize).map(|i| amp * (std::f64::consts::TAU * hz * i as f64 / fs).sin() as f32).collect();
+            mic.process(&mut x);
+            assert!(x.iter().all(|v| v.is_finite()));
+            peak(&x[x.len() / 2..])
+        };
+        // quiet enough to pass the compressor: the shelf gives +9 dB at the bottom, nothing mid-band
+        let (low, mid) = (tone(50.0, 0.005), tone(1000.0, 0.005));
+        let db = 20.0 * (low / mid).log10();
+        assert!((6.0..10.0).contains(&db), "{fs}: low end {db} dB over mid");
+        // a loud sound is turned down far more than a quiet one is
+        let quiet_gain = tone(1000.0, 0.005) / 0.005;
+        let loud_gain = tone(1000.0, 0.8) / 0.8;
+        assert!(loud_gain < quiet_gain * 0.25, "{fs}: gain {loud_gain} against {quiet_gain}");
+        assert!(tone(1000.0, 1.0) < 2.0, "{fs}: a full-scale tone stays in range");
+    }
+}
+
+/// Saved projects from before Beatbox still load; a beat survives a round trip.
+#[test]
+fn a_beat_is_saved_with_the_project() {
+    let old = r#"{"version":1,"lyrics":"la","mode":"speak"}"#;
+    let s: Settings = serde_json::from_str(old).unwrap();
+    assert_eq!(s.beat, BeatSettings::default());
+    assert!(s.beat.mic && s.beat.follow && !s.beat.steps.is_empty());
+    let edited = Settings { mode: Mode::Beatbox, beat: BeatSettings { steps: parse_beat("B . m:43 ."), bpm: 77.0, swing: 0.3, preset: None, mic: false, follow: false }, ..s };
+    let back: Settings = serde_json::from_str(&serde_json::to_string(&edited).unwrap()).unwrap();
+    assert_eq!(back, edited);
+}
+
+/// The mode and the posture are one command, so a stale one changes neither.
+#[test]
+fn entering_beatbox_sets_its_posture_in_the_same_command() {
+    use chimera::phonetics::beatbox::beat_ready;
+    use chimera_plugin::bridge::{Bridge, ParamHost};
+    use chimera_plugin::ChimeraParams;
+    use std::sync::Arc;
+    struct Host;
+    impl ParamHost for Host {
+        fn begin(&self, _: &str) {}
+        fn set(&self, _: &str, _: f32) {}
+        fn end(&self, _: &str) {}
+        fn values(&self) -> Vec<(String, f32)> {
+            Vec::new()
+        }
+    }
+    let params = Arc::new(ChimeraParams::default());
+    let shared = Arc::new(Shared::default());
+    let bridge = Bridge::new(params.clone(), shared.clone(), Box::new(Host));
+    let mut c = chimera_plugin::rebuild(&params, &shared, params.voice(), FS).unwrap();
+    let rev = shared.revision.load(Ordering::Relaxed);
+    let jaw = |s: &Settings| s.artic.get(ArticKey::Jaw);
+    let ready = beat_ready(BodyMix::MALE).get(ArticKey::Jaw);
+    assert_ne!(jaw(&params.settings.read().unwrap()), ready);
+    // from before a restore: neither happens
+    shared.restart(FS);
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"mode","mode":"beatbox"}}"#));
+    assert_eq!(params.settings.read().unwrap().mode, Mode::Sing);
+    assert_ne!(jaw(&params.settings.read().unwrap()), ready);
+    // current: both, and the audio thread gets both at once
+    let rev = shared.revision.load(Ordering::Relaxed);
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"mode","mode":"beatbox"}}"#));
+    assert_eq!(params.settings.read().unwrap().mode, Mode::Beatbox);
+    assert_eq!(jaw(&params.settings.read().unwrap()), ready);
+    c.begin_block(&params.voice(), Transport::default(), &shared);
+    assert_eq!(c.latency_samples(), (BEAT_LATENCY * FS).round() as u32);
+    assert_eq!(c.engine().voice().artic.target.jaw, ready.unwrap());
+    // the beat's commands reach the settings and the sequencer
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"beat","steps":[{{"id":"B"}},null,{{"id":"m","note":43}}],"preset":"Mine","bpm":99,"swing":0.2}}"#));
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"mic","on":false}}"#));
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"followHost","on":false}}"#));
+    let beat = params.settings.read().unwrap().beat.clone();
+    assert_eq!((beat.steps.len(), beat.preset.as_deref(), beat.bpm, beat.swing, beat.mic, beat.follow), (3, Some("Mine"), 99.0, 0.2, false, false));
+    c.begin_block(&params.voice(), Transport::default(), &shared);
+    assert_eq!((c.engine().beat().steps().len(), c.engine().beat().bpm, c.engine().beat().swing), (3, 99.0, 0.2));
 }
