@@ -73,3 +73,24 @@ fn onset_consonants_carry_the_new_pitch() {
     let on_d = plan.gestures.iter().any(|g| (g.t0 - d.t0).abs() < 1e-9 && g.targets.get(ControlKey::F0) == Some(hz));
     assert!(on_d, "no pitch gesture for {hz:.1} Hz starting on the 'd' at {:.4} s", d.t0);
 }
+
+#[test]
+fn a_delayed_cluster_closure_stays_inside_a_short_sung_stop() {
+    // In "harped" the /t/ closes behind the /p/ with its tip already raised by the /ɹ/, so its
+    // closure is aimed later (the pop on "sharp tree"). In a quarter-beat note at 180 bpm the /t/
+    // lasts only a few milliseconds: a fixed 25 ms delay pushed its closure 23 ms into the next
+    // vowel and reversed its secondary gesture.
+    let mut g = EnglishG2P::new();
+    g.load_dict("harped\tHH AA1 R P T\nah\tAA1\n");
+    let syl = lyrics_to_syllables("harped ah harped ah", &g);
+    let notes: Vec<SungNote> = syl.iter().map(|s| SungNote { midi: 60.0, beats: 0.25, syl: s.clone() }).collect();
+    let plan = plan_song(&notes, &SongOptions { body: "male".into(), bpm: 180.0, t0: 0.5, vibrato: 0.0 });
+    let ts: Vec<_> = plan.segments.iter().enumerate().filter(|(i, s)| s.ipa == "t" && *i > 0 && plan.segments[i - 1].ipa == "p").map(|(_, s)| s.clone()).collect();
+    assert!(!ts.is_empty());
+    for t in ts {
+        for gst in plan.gestures.iter().filter(|g| g.label.as_ref().is_some_and(|l| l.as_str() == "t") && g.t0 >= t.t0 - 0.05 && g.t0 <= t.t1) {
+            assert!(gst.t0 <= gst.t1, "a /t/ gesture runs backwards: {:.4} → {:.4}", gst.t0, gst.t1);
+            assert!(gst.t1 <= t.t1 + 1e-9, "a /t/ gesture ends at {:.4} s, after its /t/ ({:.4}–{:.4} s)", gst.t1, t.t0, t.t1);
+        }
+    }
+}

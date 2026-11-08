@@ -3,7 +3,8 @@
 //! the same keys everywhere, strings and labels exact, `speed`/`releaseHold`/`tag` exact, other
 //! numbers to 1e-9 relative (absolute floor 1e-9). The planners' expectations (utterances,
 //! durations, phrases, songs, live notes) are re-blessed with `CHIMERA_BLESS=1` after an intended
-//! change, like the audio fixtures; the beat sequencer's stay the TypeScript engine's.
+//! change, like the audio fixtures. So are the beat sounds' gestures and the beat player's output,
+//! which carry the calibrated vowel targets; the beat notation stays the TypeScript engine's.
 mod common;
 use chimera::anatomy::human::BODY_MALE;
 use chimera::control::beat_player::BeatPlayer;
@@ -78,14 +79,21 @@ fn de<T: serde::de::DeserializeOwned>(v: &Value) -> T {
 /// planning.json (its inputs stay). The tests run in parallel, so each rewrites the file under a
 /// lock with only its own section changed.
 fn bless(section: &str, field: &str, got: Vec<Value>) {
+    bless_with(|f| {
+        let items = f[section].as_array_mut().unwrap();
+        assert_eq!(items.len(), got.len());
+        for (item, v) in items.iter_mut().zip(got) {
+            item[field] = v;
+        }
+    });
+}
+
+/// Rewrite planning.json under the lock, changing only what `edit` changes.
+fn bless_with(edit: impl FnOnce(&mut Value)) {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _held = LOCK.lock().unwrap();
     let mut f = load("planning");
-    let items = f[section].as_array_mut().unwrap();
-    assert_eq!(items.len(), got.len());
-    for (item, v) in items.iter_mut().zip(got) {
-        item[field] = v;
-    }
+    edit(&mut f);
     save_json("planning", &f);
 }
 
@@ -209,29 +217,39 @@ fn live_notes_match_typescript() {
 
 #[test]
 fn beat_sounds_match_typescript() {
-    let f = load("planning");
+    let mut f = load("planning");
     let mut st = Stats::default();
-    let sounds = f["sounds"].as_array().unwrap();
+    let bless_it = blessing();
+    let mut cmp = |path: &str, want: &mut Value, got: Value, st: &mut Stats| if bless_it { *want = got } else { cmp(path, want, &got, st) };
+    let sounds = f["sounds"].as_array_mut().unwrap();
     assert_eq!(sounds.len(), BEAT_SOUNDS.len());
     for (s, want) in BEAT_SOUNDS.iter().zip(sounds) {
         // the catalogue the UI receives
         let mut meta = want.as_object().unwrap().clone();
         meta.remove("builds");
         meta.remove("leadIn");
-        cmp(&format!("sound {}", s.id), &Value::Object(meta), &val(s), &mut st);
-        for b in want["builds"].as_array().unwrap() {
-            let body = b["body"].as_str().unwrap();
+        self::cmp(&format!("sound {}", s.id), &Value::Object(meta), &val(s), &mut st);
+        for b in want["builds"].as_array_mut().unwrap() {
+            let body = b["body"].as_str().unwrap().to_string();
             let o: BeatBuild = de(&b["o"]);
             let mut out = Vec::new();
-            (s.build)(body.into(), &o, &mut out);
-            cmp(&format!("sound {} {body} {}", s.id, b["o"]), &b["gestures"], &val(&out), &mut st);
+            (s.build)(body.as_str().into(), &o, &mut out);
+            let path = format!("sound {} {body} {}", s.id, b["o"]);
+            cmp(&path, &mut b["gestures"], val(&out), &mut st);
         }
         for body in ["male", "female", "child"] {
-            cmp(&format!("leadIn {} {body}", s.id), &want["leadIn"][body], &json!(BeatPlayer::lead_in(s.id, body.into())), &mut st);
+            cmp(&format!("leadIn {} {body}", s.id), &mut want["leadIn"][body], json!(BeatPlayer::lead_in(s.id, body.into())), &mut st);
         }
     }
     for body in ["male", "female", "child"] {
-        cmp(&format!("ready {body}"), &f["ready"][body], &val(&beat_ready(body.into())), &mut st);
+        cmp(&format!("ready {body}"), &mut f["ready"][body], val(&beat_ready(body.into())), &mut st);
+    }
+    if bless_it {
+        let (sounds, ready) = (f["sounds"].clone(), f["ready"].clone());
+        return bless_with(|g| {
+            g["sounds"] = sounds;
+            g["ready"] = ready;
+        });
     }
     report("sounds", &st);
 }
@@ -293,9 +311,16 @@ fn run_player(ops: &[Value]) -> Vec<Value> {
 fn beat_player_matches_typescript() {
     let f = load("planning");
     let mut st = Stats::default();
+    let mut got_all = Vec::new();
     for (i, s) in f["player"].as_array().unwrap().iter().enumerate() {
-        let got = run_player(s["ops"].as_array().unwrap());
-        cmp(&format!("player {i}"), &s["out"], &Value::Array(got), &mut st);
+        let got = Value::Array(run_player(s["ops"].as_array().unwrap()));
+        if !blessing() {
+            cmp(&format!("player {i}"), &s["out"], &got, &mut st);
+        }
+        got_all.push(got);
+    }
+    if blessing() {
+        return bless("player", "out", got_all);
     }
     report("player", &st);
 }

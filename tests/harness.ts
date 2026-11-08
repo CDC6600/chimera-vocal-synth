@@ -45,7 +45,7 @@ export class WasmVoice {
   }
   /** Source values by name (crates/chimera-wasm engine_set_source order). */
   setSource(values: Record<string, number | boolean>): void {
-    const keys = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced"];
+    const keys = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
     const v = new Float64Array(this.x.memory.buffer, this.x.engine_values(this.h), 32).fill(NaN);
     for (const [k, val] of Object.entries(values)) v[keys.indexOf(k)] = typeof val === "boolean" ? (val ? 1 : 0) : val;
     this.x.engine_set_source(this.h);

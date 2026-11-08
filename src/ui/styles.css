@@ -1293,6 +1293,17 @@ body {
   color: var(--blue-dim);
 }
 
+.repo-link {
+  display: inline-flex;
+  color: var(--blue-dim);
+  transition: color 120ms, filter 120ms;
+}
+
+.repo-link:hover {
+  color: var(--blue);
+  filter: drop-shadow(0 0 3px rgba(79, 182, 242, 0.7));
+}
+
 /* ---------- buttons, chips */
 button.primary,
 button.ghost,

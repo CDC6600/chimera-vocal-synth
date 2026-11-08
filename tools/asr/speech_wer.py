@@ -4,12 +4,15 @@
 
 usage: speech_wer.py <outdir> [--against earlier/wer.json]
 
-Writes <outdir>/wer.json and the renders. With --against it says whether the word error rate
-rose by more than SLACK points, which a tuning loop treats as a speech regression.
+Writes <outdir>/wer.json and the renders. With --against it compares the training sentences'
+word error rate: BETTER if it fell by at least MARGIN points, WORSE if it rose by more than
+SLACK, and NO CLEAR CHANGE between. The held-out sentences are reported but never decide.
 
 Set up once with tools/asr/setup.sh (a Python env and the model in ~/.cache/chimera-asr).
-The sentences are in sentences.tsv: Harvard sentences (IEEE 1969) and semantically
-unpredictable ones, which Whisper can't guess from context.
+The sentences are in sentences.tsv (kind, text, set): Harvard sentences (IEEE 1969) and
+semantically unpredictable ones, which Whisper can't guess from context. "train" sentences are
+the ones a tuning loop may listen to; "held" ones (Harvard list 2, and unpredictable sentences
+dense in sh, ch and j) only check that gains carry over.
 """
 
 import json
@@ -29,6 +32,8 @@ CACHE = os.path.expanduser("~/.cache/chimera-asr/models")
 BODIES = ("male", "female")
 # word error rate (points) a change may add before it counts as a speech regression
 SLACK = 3.0
+# fall in word error rate (points) that counts as an improvement: about 4 of the ~290 training words
+MARGIN = 1.5
 
 
 def words(text):
@@ -64,13 +69,13 @@ def main():
         del args[i : i + 2]
     out = args[0]
     os.makedirs(out, exist_ok=True)
-    sentences = [line.rstrip("\n").split("\t") for line in open(os.path.join(HERE, "sentences.tsv"))]
+    sentences = [(line.rstrip("\n").split("\t") + ["train"])[:3] for line in open(os.path.join(HERE, "sentences.tsv"))]
     chimera = os.path.join(REPO, "target/release/chimera")
-    jobs = [(kind, text, body, os.path.join(out, f"{kind}-{body}-{i + 1:02d}"))
-            for i, (kind, text) in enumerate(sentences) for body in BODIES]
+    jobs = [(kind, text, body, os.path.join(out, f"{kind}-{body}-{i + 1:02d}"), part)
+            for i, (kind, text, part) in enumerate(sentences) for body in BODIES]
 
     def render(job):
-        _, text, body, stem = job
+        _, text, body, stem, _ = job
         subprocess.run([chimera, "render", "text", stem, text, body], check=True, capture_output=True)
 
     with ThreadPoolExecutor(os.cpu_count()) as pool:
@@ -79,14 +84,16 @@ def main():
     model = WhisperModel("small.en", device="cpu", compute_type="int8", cpu_threads=os.cpu_count(),
                          download_root=CACHE)
     rows, totals = [], {}
-    for kind, text, body, stem in jobs:
+    for kind, text, body, stem, part in jobs:
         segs, _ = model.transcribe(load16k(stem + ".wav"), language="en", beam_size=1, temperature=0.0,
                                    condition_on_previous_text=False, vad_filter=False)
         heard = " ".join(s.text.strip() for s in segs)
         ref = words(text)
         e = edits(ref, words(heard))
-        rows.append({"kind": kind, "body": body, "text": text, "heard": heard, "errors": e, "words": len(ref)})
-        for key in (f"{kind}-{body}", "all"):
+        rows.append({"kind": kind, "body": body, "set": part, "text": text, "heard": heard, "errors": e, "words": len(ref)})
+        # "all" is the training sentences (as before held-out ones existed); "held" the others
+        keys = (f"{kind}-{body}", "all") if part == "train" else (f"held-{kind}-{body}", "held")
+        for key in keys:
             t = totals.setdefault(key, [0, 0])
             t[0] += e
             t[1] += len(ref)
@@ -94,15 +101,18 @@ def main():
     report = {"wer": wer, "sentences": rows}
     with open(os.path.join(out, "wer.json"), "w") as f:
         json.dump(report, f, indent=1)
+    # only the training sentences' transcripts: a tuning loop must not read the held-out ones
     for r in rows:
-        if r["errors"]:
-            print(f"  {r['kind']:8s} {r['body']:6s} {r['errors']}/{r['words']}  {r['text']}  →  {r['heard']}")
+        if r["errors"] and r["set"] == "train":
+            print(f"  {r['set']:5s} {r['kind']:8s} {r['body']:6s} {r['errors']}/{r['words']}  {r['text']}  →  {r['heard']}")
     print("word error rate (%): " + ", ".join(f"{k} {v}" for k, v in sorted(wer.items())))
     if against:
-        old = json.load(open(against))["wer"]["all"]
-        new = wer["all"]
-        verdict = "WORSE" if new > old + SLACK else "OK"
-        print(f"speech verdict against {against}: {verdict} (word error rate {old} → {new} %, slack {SLACK})")
+        before = json.load(open(against))["wer"]
+        old, new = before["all"], wer["all"]
+        verdict = "WORSE" if new > old + SLACK else "BETTER" if new <= old - MARGIN else "NO CLEAR CHANGE"
+        held = f"; held-out {before['held']} → {wer['held']} %, not used to decide" if "held" in before else ""
+        print(f"speech verdict against {against}: {verdict} (training word error rate {old} → {new} %, "
+              f"better from -{MARGIN}, worse past +{SLACK}{held})")
 
 
 main()

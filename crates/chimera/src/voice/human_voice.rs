@@ -35,9 +35,18 @@ pub struct VoiceSource {
     pub drift: f64,
     /// false → whisper (no fold vibration)
     pub voiced: bool,
+    /// 0 dark … 1 bright: how abruptly the folds close, at any tension. The default (0.25) leaves
+    /// it to tension; it sits low because a spoken or sung voice already closes nearly as softly as
+    /// the model can, so there is little room to darken and a lot to brighten.
+    #[serde(default = "default_brightness")]
+    pub brightness: f64,
 }
 
-pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true };
+fn default_brightness() -> f64 {
+    DEFAULT_SOURCE.brightness
+}
+
+pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
 
 /// `Partial<VoiceSource>`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -65,6 +74,8 @@ pub struct SourcePatch {
     pub drift: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voiced: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brightness: Option<f64>,
 }
 
 impl SourcePatch {
@@ -76,13 +87,13 @@ impl SourcePatch {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(x) = self.$f { s.$f = x; } )* };
         }
-        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced);
+        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness);
     }
     pub fn merge(&mut self, o: &SourcePatch) {
         macro_rules! set {
             ($($f:ident),*) => { $( if o.$f.is_some() { self.$f = o.$f; } )* };
         }
-        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced);
+        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness);
     }
     pub fn from_source(s: &VoiceSource) -> Self {
         SourcePatch {
@@ -97,6 +108,7 @@ impl SourcePatch {
             vibrato_rate: Some(s.vibrato_rate),
             drift: Some(s.drift),
             voiced: Some(s.voiced),
+            brightness: Some(s.brightness),
         }
     }
 }
@@ -150,6 +162,9 @@ pub struct HumanVoice {
     /// time left (s) during which a release of the gate follows the score's own breath ramp
     score_breath_hold: f64,
     p_lung: f64,
+    /// lung pressure applied this sample, ramped toward `p_lung` across the control block
+    p_lung_now: f64,
+    p_lung_step: f64,
     f0: f64,
     pub output_gain: f64,
     dc_x: f64,
@@ -205,6 +220,8 @@ impl HumanVoice {
             gate_target: 0.0,
             score_breath_hold: 0.0,
             p_lung: 0.0,
+            p_lung_now: 0.0,
+            p_lung_step: 0.0,
             f0: DEFAULT_SOURCE.f0,
             output_gain: 5.5e-7,
             dc_x: 0.0,
@@ -304,9 +321,13 @@ impl HumanVoice {
         // The folds close along their length and depth over a return phase, not all at once, so
         // a sung or spoken voice closes softly (0.22 at tension 0.55): an abrupt closure put
         // 3-8 dB too much energy above 2 kHz. Pressing harder than that brings the abrupt closure
-        // back, up to 0.95 at full tension, so a pressed voice still has its edge.
-        g.closure_sharpness = 0.4 * s.tension + 1.375 * js_max(0.0, s.tension - 0.6);
-        g.skew = 0.56 + 0.16 * s.tension;
+        // back, up to 0.95 at full tension, so a pressed voice still has its edge. Brightness moves
+        // the closure from there, and shortens or lengthens the closing phase: 0 closes as softly as
+        // the model allows, 1 about as abruptly as a pressed voice.
+        let bright = s.brightness - DEFAULT_SOURCE.brightness;
+        let by_tension = 0.4 * s.tension + 1.375 * js_max(0.0, s.tension - 0.6);
+        g.closure_sharpness = clamp(by_tension + 0.8 * bright, 0.0, 1.0);
+        g.skew = 0.56 + 0.16 * s.tension + 0.2 * bright;
         g.fry = s.fry;
         // Jitter of a healthy, trained voice at the default roughness (0.1): about 0.45 %, well
         // under the clinical threshold (MDVP: 1.04 %).
@@ -337,7 +358,8 @@ impl HumanVoice {
                 }
                 self.ctrl_counter -= 1;
                 let net = &mut self.airway.net;
-                net.set_fixed_pressure(lungs, self.p_lung);
+                self.p_lung_now += self.p_lung_step;
+                net.set_fixed_pressure(lungs, self.p_lung_now);
                 let a = self.glottis.next(net.p[sub_node] - net.p[supra]);
                 net.set_port_area(gp, a);
                 let y = net.step();
@@ -469,6 +491,7 @@ impl HumanVoice {
         };
         self.gate += (gate_goal - self.gate) * (1.0 - exp(-dt / tau));
         self.p_lung = self.source.pressure * CM_H2O * self.gate;
+        self.p_lung_step = (self.p_lung - self.p_lung_now) / self.ctrl_every as f64;
         // vocal effort follows the pressure actually applied: a harder breath (a louder sung note)
         // gives wider, sharper-closing pulses, as in real phonation, not just more flow
         self.glottis.params.effort = clamp(((self.source.pressure * self.gate).abs() - 3.0) / 10.0, 0.0, 1.0);
@@ -570,7 +593,7 @@ impl HumanVoice {
         out.velum_port = self.airway.frame.as_ref().map_or(0.0, |f| f.velum_port);
         out.f0 = self.glottis.f0_now;
         out.voicing = self.glottis.voicing;
-        out.p_lung = self.p_lung / CM_H2O;
+        out.p_lung = self.p_lung_now / CM_H2O; // the pressure applied, not the ramp's target
         out.out_rms = out_rms;
         out.noise_level = noise_level;
         out.noise_node = noise_node;

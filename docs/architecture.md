@@ -1,44 +1,20 @@
-# CHIMERA — a physical-modeling voice synthesizer for many creatures
+# Architecture: the acoustic model
 
-## Brief (from the user)
+How CHIMERA makes sound. This was the original design (moved here from `DESIGN.md`); the
+engine's real-time contract and the browser boundary are in [rust-engine.md](rust-engine.md),
+and the look in [ui-redesign.md](ui-redesign.md).
 
-"Create the ultimate vocal synthesizer. Web app for now. Be extremely ambitious.
-Sophisticated throat, lips, tongue modeling. Different animals: human, bird,
-reptile, etc. Tonal and percussive (beatboxing). Beautiful visuals/diagrams,
-dynamic animations based on params." Long build is expected.
+The owner's brief: "Create the ultimate vocal synthesizer. Web app for now. Be extremely
+ambitious. Sophisticated throat, lips, tongue modeling. Different animals: human, bird, reptile,
+etc. Tonal and percussive (beatboxing). Beautiful visuals/diagrams, dynamic animations based on
+params."
 
-## Product shape
+**Not built (yet):** the design's wider bestiary (only songbird, seal, alligator and elephant
+exist), the two-mass vocal folds, an IPA chart mode, the app-side EQ/reverb/limiter chain and
+in-app WAV export (the CLI renders WAVs; the app has a close-mic chain in WebAudio). Treat the
+code as the truth where this file disagrees.
 
-A browser instrument where every sound comes from a simulated airway, not samples.
-
-* **Creatures**: human (bass/tenor/alto/soprano/child), songbird (two-voice syrinx),
-  parrot (talking bird), owl, crow, cat (meow, purr), dog/wolf (bark, howl), lion (roar),
-  elephant (trunk trumpet, rumble), cow, frog (vocal sac), crocodile (bellow, hiss),
-  snake (hiss), gecko (chirp), dragon (fantasy). Morph between anatomies.
-* **Modes**:
-  * *Play* — drag the tongue/lips/jaw in a live anatomy view; XY vowel pad; on-screen and
-    computer keyboard; Web MIDI; phoneme pads (tap /t/ over a held vowel).
-  * *Speak* — English text (CMUdict + letter-to-sound fallback) or raw IPA → phonemes →
-    prosody → gestural score → speech. Timeline shows the gestural score.
-  * *Sing* — piano roll with lyrics per note; onset consonants placed before the beat.
-  * *Beatbox* — pads + 16-step sequencer; every drum is an articulatory gesture
-    (bilabial ejective kick, "pf" snare, alveolar hat, inward K-snare, lip roll, click roll,
-    throat bass). "One mouth" (physically honest, one tract) or "crew" (one tract per track).
-  * *IPA chart* — click any symbol on the full IPA chart (incl. ejectives, implosives,
-    clicks, trills) to hear/see it.
-  * *Creature lab* — anatomy parameters, morphing, call presets.
-* **Visuals (first-class)**: everything animates from live engine state at 60 fps.
-  * Midsagittal cutaway of the current creature: tongue, jaw, lips, velum, larynx,
-    epiglottis; acoustic pressure rendered as a colour field inside the airway;
-    airflow particles whose speed follows simulated volume velocity; turbulence
-    shown at constrictions where the Reynolds number exceeds threshold.
-  * Laryngoscope "stroboscope" (top view of vocal folds / syrinx labia) replayed
-    slowed down from the real simulated glottal area waveform.
-  * Area-function tube diagram (cylinders with pressure), glottal flow scope,
-    transfer function with formant markers, F1–F2 vowel chart with the live point,
-    scrolling spectrogram, gestural-score timeline with playhead.
-
-## Architecture
+## Overview
 
 ```
 main thread (React UI, canvas renderers)
@@ -59,7 +35,7 @@ main thread renderers
 
 Control rate: every 64–128 output samples, with per-sample linear interpolation of areas.
 
-### 1. Airway acoustics — branched staggered-grid FDTD transmission line
+## 1. Airway acoustics — branched staggered-grid FDTD transmission line
 
 Chosen over Kelly-Lochbaum because it handles, in one framework: variable section
 lengths (larynx height, lip protrusion, creature size), DC aerodynamics (pressure
@@ -91,7 +67,7 @@ branching (nasal tract, sinuses, piriform fossae, two bronchi, vocal sacs, OEC).
 * Cross-check: a frequency-domain chain-matrix model with the same loss terms computes
   H(f) for analysis, UI formant display, and as a test oracle for the FDTD.
 
-### 2. Sources
+## 2. Sources
 
 * **Parametric glottis (default, exact pitch)**: glottal *area* pulse (opening/closing
   phases, open quotient, skew, max area, rest/abduction area, posterior chink) drives the
@@ -117,7 +93,7 @@ branching (nasal tract, sinuses, piriform fossae, two bronchi, vocal sacs, OEC).
   larynx raising/lowering (ejectives/implosives via dV/dt); velaric closure + tongue
   dorsum lowering (clicks). All physical through the FDTD — no special-cased samples.
 
-### 3. Anatomy & articulation (human first, others as parametric variants)
+## 3. Anatomy & articulation (human first, others as parametric variants)
 
 * 2D midsagittal geometry (cm, head frame): fixed outer wall (posterior pharynx, velum,
   hard palate, alveolar ridge, upper incisors, upper lip) and moving inner wall
@@ -144,7 +120,7 @@ branching (nasal tract, sinuses, piriform fossae, two bronchi, vocal sacs, OEC).
   vocal sac = Helmholtz side branch). Birds: separate topology (syrinx/trachea/OEC/beak,
   tongue for parrots).
 
-### 4. Control: gestures (Articulatory Phonology–style)
+## 4. Control: gestures (Articulatory Phonology–style)
 
 * Phoneme = set of gestures, each controlling a subset of articulators with targets,
   stiffness, blending strength and timing relative to the segment.
@@ -159,53 +135,13 @@ branching (nasal tract, sinuses, piriform fossae, two bronchi, vocal sacs, OEC).
   syllabification; Klatt-style durations; intonation (declination, H* on stressed
   syllables, final fall / question rise). Singing: notes+lyrics → syllable alignment.
 
-### 5. FX / output
+## 5. FX / output
 
 DC blocker → mic model (distance/proximity) → EQ → compressor → saturation → reverb →
 limiter. WAV export via the same engine in a Worker (unlimited voices, faster than RT).
 
-## Tech
-
-Engine: Rust (`crates/chimera`), deterministic (libm for all transcendental math), no
-allocation while rendering, block-size-independent output; `crates/chimera-wasm` exposes it to
-the browser as a C-ABI wasm module with no imports (the worklet and the main thread each
-instantiate it; see docs/rust-engine.md for the boundary). UI: TypeScript, Vite, React 19
-(controls) + hand-written canvas/SVG renderers (visuals), Zustand state; `src/wasm/` is the
-UI's typed facade over the engine. Bun for the UI's tooling and tests.
-
-## Validation
-
-* `cargo test --workspace` (engine): uniform-tube resonances vs analytic; FDTD impulse response vs chain-matrix
-  H(f); long random-gesture stability (no NaN/blow-up); f0 accuracy; vowel formants vs
-  targets; fricative spectral centroids (s > ʃ > f); stop bursts present; ingressive /
-  ejective / click pressure signatures; bird pitch accuracy.
-  Golden fixtures from the retired TypeScript engine (crates/chimera/tests/golden) check the
-  port; native and wasm builds render bit-identical samples (tests/wasm-engine.test.ts).
-* `bun test tests`: the UI's live paths (Sing keys, worklet ordering, MIDI) on the wasm engine.
-* Offline renders (`cargo run --release -p chimera-cli -- render speech|text|song|beatbox|creature|vowels …`)
-  → WAV; `tools/spectrogram.ts` draws the PNG to inspect. `chimera diagnose` measures speech
-  (nasal leakage, formant undershoot, bandwidths, pitch); `chimera calibrate` regenerates the
-  vowel/consonant tables.
-* Headless Chromium (Playwright) smoke tests: app loads, worklet runs, no console errors,
-  screenshots of each mode.
-* Hosted over HTTPS via `tailscale serve` (AudioWorklet needs a secure context).
-
-## Phases
-
-0. Scaffold, analysis tools (WAV, FFT, LPC, spectrogram PNG), test harness.
-1. Airway FDTD + parametric glottis + chain-matrix oracle.
-2. Human articulatory geometry, area function, calibration; nasal; fricatives/stops.
-3. Gestures, phoneme inventory (IPA), G2P, prosody → speech.
-4. Worklet + core UI (anatomy view with drag, controls, keyboard, vowel pad, speak).
-5. Extra sources (syrinx, valves/trills, ventricular, two-mass, purr) + creatures + visuals.
-6. Beatbox (airstream mechanisms, sounds, sequencer, mic FX).
-7. Singing (piano roll, lyrics, multi-voice, export).
-8. Polish: visuals, presets, performance, mobile, onboarding.
-
 ## Known risks
 
-* Fricative/burst realism depends on noise-source calibration (gain, placement, spectrum).
-* Geometry→area calibration quality decides vowel quality.
-* Self-oscillating valves (two-mass, trills) can be finicky → parametric fallbacks.
-* CPU in the AudioWorklet (JS) with several voices; quality settings + offline render.
-* Scope: large; each phase must leave a working, polished app.
+* Fricative and burst realism depends on noise-source calibration (gain, placement, spectrum).
+* Geometry → area calibration decides vowel quality.
+* Self-oscillating valves (trills) can be finicky; keep parametric fallbacks.

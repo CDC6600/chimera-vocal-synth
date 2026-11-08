@@ -121,6 +121,8 @@ export interface VoiceSource {
   vibratoRate: number;
   drift: number;
   voiced: boolean;
+  /** 0 dark … 1 bright (default 0.25: as tension sets it) */
+  brightness: number;
 }
 
 export interface VoiceTelemetry {

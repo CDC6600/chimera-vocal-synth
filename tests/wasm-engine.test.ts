@@ -10,7 +10,7 @@ import type { Gesture } from "../src/wasm/types.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const WASM = `${ROOT}target/wasm32-unknown-unknown/release/chimera_wasm.wasm`;
-const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced"];
+const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
 
 interface Exports {
   memory: WebAssembly.Memory;

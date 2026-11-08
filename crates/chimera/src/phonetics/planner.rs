@@ -263,6 +263,13 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
         let prev_seg = if i > 0 { Some(&segs[i - 1]) } else { None };
         let mut add_oral = |tg: &ArticPatch, a: f64, b: f64, speed: f64, label: &str| oral_gestures_into(def, tg, a, b, speed, label, &mut gestures);
         match def.manner {
+            // a stop that closes behind another stop's closure, its articulator already placed by
+            // the segment before that (the tip raised for /ɹ/ in "sharp tree"), reaches contact
+            // sooner than from a vowel: with the usual lead it sealed ~20 ms before the front
+            // closure opened, and the tongue then pumped the air shut between the two closures
+            // The delay leaves the closure 30 ms before its release (its 10 ms minimum hold and
+            // its ~20 ms early release), so a short sung stop isn't pushed past its own end.
+            Manner::Stop if pre_placed_behind_closure(&segs, i) => add_oral(&def.targets, t0 + js_min(PLACED_CLOSURE_DELAY, js_max(0.0, dur - 0.03)), t1, 1.55, def.ipa),
             Manner::Stop | Manner::Nasal => add_oral(&def.targets, t0, t1, 1.55, def.ipa),
             Manner::Tap => add_oral(&def.targets, t0, t1, 2.8, def.ipa),
             Manner::Trill => {
@@ -389,6 +396,46 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
         }
     }
     Plan { gestures, segments: planned, end }
+}
+
+/// Front-to-back order of the oral places of articulation.
+fn place_rank(place: &str) -> Option<u8> {
+    Some(match place {
+        "bilabial" => 0,
+        "labiodental" => 1,
+        "dental" => 2,
+        "alveolar" => 3,
+        "postalveolar" => 4,
+        "retroflex" => 5,
+        "palatal" => 6,
+        "velar" => 7,
+        "uvular" => 8,
+        _ => return None,
+    })
+}
+
+/// How much later a pre-placed closure behind another stop's closure is aimed (s): the time its
+/// shorter travel saves, so it seals as the front closure opens.
+const PLACED_CLOSURE_DELAY: f64 = 0.025;
+
+/// Whether stop `i` closes behind the closure of the stop before it, with its own articulators
+/// already set by the consonant before that one (/t/ in /ɹpt/: the tip is up for the /ɹ/ and
+/// stays free during the lip closure; a rhotic vowel raises it too). After any other vowel ("apt",
+/// "napkin") the timing is unchanged.
+fn pre_placed_behind_closure(segs: &[Seg], i: usize) -> bool {
+    let (Some(def), Some(prev)) = (segs[i].def.as_ref(), i.checked_sub(1).and_then(|j| segs[j].def.as_ref())) else { return false };
+    if def.manner != Manner::Stop || prev.manner != Manner::Stop || !closes_in_front(prev.place, def.place) || i < 2 {
+        return false;
+    }
+    let before = &segs[i - 2];
+    let rhotic = before.vowel.as_ref().filter(|v| v.get(ArticKey::TtCurl).unwrap_or(0.0) > 0.05);
+    let Some(tg) = before.def.as_ref().map(|d| &d.targets).or(rhotic) else { return false };
+    def.dominant.iter().all(|k| tg.get(*k).is_some())
+}
+
+/// Whether a closure at `front` lies in front of one at `back`.
+fn closes_in_front(front: &str, back: &str) -> bool {
+    matches!((place_rank(front), place_rank(back)), (Some(f), Some(b)) if f < b)
 }
 
 /// Ramps of a given pitch (a sung note's) on a segment `dur` long: 60 ms, but at most half the

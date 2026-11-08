@@ -22,7 +22,7 @@ type Fn = (...a: number[]) => number;
 type Exports = { memory: WebAssembly.Memory } & Record<string, Fn>;
 
 const ARTIC_KEYS = CONTROL_KEYS.slice(0, 17);
-const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced"];
+const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
 /** scalars at the head of the human telemetry block (crates/chimera-wasm/src/lib.rs) */
 const TELE_HEADER = 16;
 /** gestures taken from one schedule message */

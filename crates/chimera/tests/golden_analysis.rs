@@ -1,6 +1,8 @@
 //! The frequency-domain oracle and the analysis code against the TypeScript engine
 //! (fixtures from `bun tools/golden/analysis.ts`): the UI's transfer-function/formant pipeline on
-//! the human airway, simple tube networks, findPeaks, FFT, LPC, YIN and Nelder–Mead.
+//! the human airway, simple tube networks, findPeaks, FFT, LPC, YIN and Nelder–Mead. The human
+//! airway's cases follow the tract geometry, so `CHIMERA_BLESS=1` rewrites them after an intended
+//! geometry change; everything else stays the TypeScript engine's.
 mod common;
 use chimera::airway::frequency::{Peak, find_peaks, linspace, transfer_function};
 use chimera::airway::network::{AirwayNetwork, Area, PortSpec, TubeSpec};
@@ -13,7 +15,7 @@ use chimera::physics::{RHO, WALL_SOFT};
 use chimera::util::optimize::{NelderMeadOpts, nelder_mead};
 use chimera::voice::human_airway::HumanAirway;
 use common::*;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const TOL: f64 = 1e-9;
 
@@ -91,17 +93,18 @@ fn networks() -> Vec<(AirwayNetwork, usize, Vec<usize>)> {
 
 #[test]
 fn analysis_matches_typescript() {
-    let g = load("analysis");
+    let mut g = load("analysis");
     let mut rep = Report::default();
+    let bless_it = blessing();
 
     // ---- the UI's transfer function and formants (src/ui/analysis.ts VoiceModel.transfer)
     let ui_freqs: Vec<f64> = (0..360).map(|i| 60.0 * pow(8000.0 / 60.0, i as f64 / 359.0)).collect();
     rep.check("ui freqs", "uiFreqs", &nums(&g["uiFreqs"]), &ui_freqs, 1.0);
     let mut n_formants = 0;
-    for h in g["human"].as_array().unwrap() {
-        let body = h["body"].as_str().unwrap();
-        let mut airway = HumanAirway::new(96000.0, BodyName::parse(body).body());
-        for c in h["cases"].as_array().unwrap() {
+    for h in g["human"].as_array_mut().unwrap() {
+        let body = h["body"].as_str().unwrap().to_string();
+        let mut airway = HumanAirway::new(96000.0, BodyName::parse(&body).body());
+        for c in h["cases"].as_array_mut().unwrap() {
             let label = format!("{body} {}", c["name"].as_str().unwrap());
             let artic: HumanArtic = serde_json::from_value(c["artic"].clone()).unwrap();
             airway.apply(&artic, 0.0);
@@ -110,15 +113,26 @@ fn analysis_matches_typescript() {
             let db: Vec<f64> = tf.mag.iter().map(|m| 20.0 * log10(m + 1e-12)).collect();
             let peaks = find_peaks(&ui_freqs, &tf.mag, 150.0);
             let formants: Vec<f64> = peaks.iter().map(|p| p.freq).take(5).collect();
+            n_formants += formants.len();
+            if bless_it {
+                c["mag"] = json!(tf.mag);
+                c["pressureDb"] = json!(tf.pressure_db);
+                c["db"] = json!(db);
+                c["peaks"] = json!(peaks.iter().map(|p| [p.freq, p.bw, p.db]).collect::<Vec<_>>());
+                c["formants"] = json!(formants);
+                continue;
+            }
             rep.check("human |H|", &label, &nums(&c["mag"]), &tf.mag, 1e-12);
             rep.check("human pressure dB", &label, &nums(&c["pressureDb"]), &tf.pressure_db, 1e-6);
             rep.check("human UI dB", &label, &nums(&c["db"]), &db, 1e-6);
             rep.peaks("human peaks", &label, &c["peaks"], &peaks);
             rep.check("human formants", &label, &nums(&c["formants"]), &formants, 1.0);
-            n_formants += formants.len();
         }
     }
     assert!(n_formants >= 90, "formant readouts: {n_formants}");
+    if bless_it {
+        save_json("analysis", &g);
+    }
 
     // ---- simple networks
     let net_freqs = linspace(20.0, 6000.0, 700);
