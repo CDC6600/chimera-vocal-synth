@@ -28,9 +28,15 @@ export const dbToVolume = (db: number) => (db - GAIN_MIN) / (GAIN_MAX - GAIN_MIN
 const GESTURE_IDLE = 300;
 const gestures = new Map<string, ReturnType<typeof setTimeout>>();
 
+/** The state revision this page last adopted: a command from before a restore is dropped there. */
+let revision = -1;
+export function setRevision(r: number): void {
+  revision = r;
+}
+
 /** A command to Rust. */
 export function ipc(message: Record<string, unknown>): void {
-  window.ipc?.postMessage(JSON.stringify(message));
+  window.ipc?.postMessage(JSON.stringify({ ...message, rev: revision }));
 }
 
 /** Move a host parameter (plain value), as one gesture until the moves stop. */

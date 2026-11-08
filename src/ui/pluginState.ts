@@ -3,14 +3,14 @@
  * polling (docs/plugin.md, "One owner for each value"). Only the plugin's editor imports this.
  */
 import { engine } from "../audio/AudioEngine.ts";
-import { ARTIC_PARAMS, SOURCE_PARAMS, dbToVolume, gestureOpen } from "../audio/pluginBridge.ts";
+import { ARTIC_PARAMS, SOURCE_PARAMS, dbToVolume, gestureOpen, setRevision } from "../audio/pluginBridge.ts";
 import type { BodyMix, HumanArtic, Syllable, VoiceSource } from "../wasm/engine.ts";
 import { TELE_LABELS, decodeTelemetry } from "../worklet/telemetry.ts";
-import { followPluginNote, useSing } from "./singing.ts";
+import { clearPluginNotes, followPluginNote, roll, useSing } from "./singing.ts";
 import { useStore } from "./store.ts";
 
 /** Scalars at the head of a `/poll` response: POLL_HEADER in crates/chimera-plugin/src/bridge.rs. */
-const POLL_HEADER = 13;
+const POLL_HEADER = 14;
 /** Parameters are read every this many frames: about 20 times a second. */
 const PARAMS_EVERY = 3;
 /** The engine-load readout's window (ms). */
@@ -40,6 +40,7 @@ let syllablesVersion = -1;
 /** The whole state, as a project was saved or restored: nothing the page held survives this. */
 function adopt(s: Snapshot): void {
   revision = s.revision;
+  setRevision(s.revision);
   syllablesVersion = s.syllablesVersion;
   if (s.sampleRate > 0) engine.sampleRate = s.sampleRate;
   const initial = useStore.getInitialState();
@@ -74,14 +75,19 @@ function followParams(p: Params): void {
 let busy = 0, audio = 0, loadAt = 0;
 let frames = 0;
 let shownNote = -1;
+/** the telemetry's voice clock last seen: it starts again with a new voice */
+let lastClock = 0;
 
 async function poll(): Promise<void> {
   const r = await fetch("/poll", { cache: "no-store" });
   const buf = await r.arrayBuffer();
   const h = new Float64Array(buf, 0, POLL_HEADER);
-  const [rev, syllables, cursor, sung, note, busyNs, audioNs, , faulted, , female, child, n] = h;
+  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, n] = h;
   if (n > 0) {
     const { t, nPh, nOr } = decodeTelemetry(new Float64Array(buf, 8 * POLL_HEADER, n), new Uint8Array(buf, 8 * (POLL_HEADER + n), TELE_LABELS));
+    // a new voice's clock starts from zero: what's on the roll belongs to the old timeline
+    if (t.clock < lastClock) clearPluginNotes();
+    lastClock = t.clock;
     engine.receive({ type: "telemetry", t, load: engine.load, body: { female, child }, nPh, nOr, beatStep: -1 });
   }
   busy += busyNs;
@@ -106,7 +112,7 @@ async function poll(): Promise<void> {
   }
   if (cursor !== useSing.getState().cursor) useSing.setState({ cursor });
   const clock = engine.voiceClock() ?? 0;
-  followPluginNote(note, sung, clock);
+  followPluginNote(note, sung, serial, clock);
   if (note !== shownNote) {
     shownNote = note;
     // the keys set the pitch in Play: the encoder and the readout follow
@@ -124,6 +130,8 @@ function loop(): void {
 
 /** Fill the stores from the plugin and start following it. Await before the first render. */
 export async function attachToPlugin(): Promise<void> {
+  // for the end-to-end test: what the piano roll holds isn't in the DOM
+  (window as unknown as { __chimeraRoll: typeof roll }).__chimeraRoll = roll;
   adopt(await getJson<Snapshot>("/state"));
   requestAnimationFrame(loop);
 }

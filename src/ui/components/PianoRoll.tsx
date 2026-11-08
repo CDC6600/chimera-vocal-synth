@@ -32,7 +32,8 @@ export function PianoRoll() {
     const body = useStore.getState().body;
     const tele = engine.latest?.t;
     const clock = engine.voiceClock() ?? 0;
-    // sung pitch, sampled as telemetry arrives
+    // sung pitch, sampled as telemetry arrives; a new voice's clock starts again, on a new timeline
+    if (tele && tele.clock < s.lastClock) s.trace.length = 0;
     if (tele && tele.clock !== s.lastClock) {
       s.lastClock = tele.clock;
       s.trace.push({ t: tele.clock, m: tele.f0 > 20 ? hzToMidi(tele.f0) : NaN, v: tele.voicing });

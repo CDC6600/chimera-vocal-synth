@@ -23,10 +23,10 @@ include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 const NOT_BUILT: &str = "<!doctype html><body style='background:#000;color:#fff;font:14px sans-serif;padding:2em'>The UI wasn't built into this plugin. Run <code>bun run build</code> before building it.</body>";
 
 /// Scalars at the head of a `/poll` response (f64, little-endian), in order: revision,
-/// syllablesVersion, cursor, sung, note, busyNs, audioNs, loadPeak, faulted, playing, the telemetry's
-/// female, child, and the number of telemetry values. Those follow (see `TELE_HEADER`), then the
-/// `TELE_LABELS` bytes of active labels. Keep in step with `src/audio/pluginBridge.ts`.
-pub const POLL_HEADER: usize = 13;
+/// syllablesVersion, cursor, sung, note, noteSerial, busyNs, audioNs, loadPeak, faulted, playing, the
+/// telemetry's female, child, and the number of telemetry values. Those follow (see `TELE_HEADER`),
+/// then the `TELE_LABELS` bytes of active labels. Keep in step with `src/ui/pluginState.ts`.
+pub const POLL_HEADER: usize = 14;
 
 /// How the page's parameter changes reach the host, and their current values.
 pub trait ParamHost: Send + Sync {
@@ -77,7 +77,15 @@ impl ParamHost for GuiHost {
     }
 }
 
-/// A command from the page.
+/// A command from the page, and the state revision the page had when it sent it: a command from
+/// before a restore was meant for a project that's gone.
+#[derive(Debug, Deserialize)]
+struct Envelope {
+    rev: u32,
+    #[serde(flatten)]
+    command: Command,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Command {
@@ -175,6 +183,7 @@ impl Bridge {
             s.cursor.load(Ordering::Relaxed) as f64,
             s.sung.load(Ordering::Relaxed) as f64,
             s.note.load(Ordering::Relaxed) as f64,
+            s.note_serial.load(Ordering::Relaxed) as f64,
             s.busy_ns.swap(0, Ordering::Relaxed) as f64,
             s.audio_ns.swap(0, Ordering::Relaxed) as f64,
             s.load_peak.swap(0.0) as f64,
@@ -199,7 +208,41 @@ impl Bridge {
 
     /// A command from the page (JSON). One that doesn't parse is ignored.
     pub fn command(&self, json: &str) {
-        let Ok(cmd) = serde_json::from_str::<Command>(json) else { return };
+        let Ok(Envelope { rev, command }) = serde_json::from_str::<Envelope>(json) else { return };
+        let current = rev == self.shared.revision.load(Ordering::Relaxed);
+        match command {
+            // the host's, so outside the transaction; an open gesture must end even if stale
+            Command::Param { id, value } => {
+                if current {
+                    let mut open = self.open_gestures.lock().unwrap_or_else(|e| e.into_inner());
+                    if !open.contains(&id) {
+                        self.host.begin(&id);
+                        open.push(id.clone());
+                    }
+                    drop(open);
+                    self.host.set(&id, value);
+                }
+            }
+            Command::ParamEnd { id } => {
+                let mut open = self.open_gestures.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(i) = open.iter().position(|x| *x == id) {
+                    open.remove(i);
+                    drop(open);
+                    self.host.end(&id);
+                }
+            }
+            command => {
+                let _together = self.shared.transaction();
+                // checked again now that no restore can be under way
+                if rev == self.shared.revision.load(Ordering::Relaxed) {
+                    self.apply(command);
+                }
+            }
+        }
+    }
+
+    /// A command that changes the project: its settings and what the audio thread takes next.
+    fn apply(&self, cmd: Command) {
         let shared = &self.shared;
         let settings = || self.params.settings.write().unwrap_or_else(|e| e.into_inner());
         match cmd {
@@ -263,23 +306,7 @@ impl Bridge {
                 shared.edit(|p| p.source.merge(&values));
             }
             Command::Hold { on } => shared.edit(|p| p.hold = Some(on)),
-            Command::Param { id, value } => {
-                let mut open = self.open_gestures.lock().unwrap_or_else(|e| e.into_inner());
-                if !open.contains(&id) {
-                    self.host.begin(&id);
-                    open.push(id.clone());
-                }
-                drop(open);
-                self.host.set(&id, value);
-            }
-            Command::ParamEnd { id } => {
-                let mut open = self.open_gestures.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(i) = open.iter().position(|x| *x == id) {
-                    open.remove(i);
-                    drop(open);
-                    self.host.end(&id);
-                }
-            }
+            Command::Param { .. } | Command::ParamEnd { .. } => {}
         }
     }
 

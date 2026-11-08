@@ -246,14 +246,16 @@ export class AudioEngine {
     this.send({ type: "gate", level });
   }
 
-  /** Coalesced: many calls within a frame become one message. */
+  /** Coalesced: many calls within a frame become one message. (In the plugin Rust merges them.) */
   setArtic(values: Partial<HumanArtic>, tipFree?: boolean): void {
+    if (inPlugin) return this.send({ type: "artic", values, tipFree });
     this.pendingArtic = { ...(this.pendingArtic ?? {}), ...values };
     if (tipFree !== undefined) this.pendingTipFree = tipFree;
     this.scheduleFlush();
   }
 
   setSource(values: Partial<VoiceSource>): void {
+    if (inPlugin) return this.send({ type: "source", values });
     this.pendingSource = { ...(this.pendingSource ?? {}), ...values };
     this.scheduleFlush();
   }

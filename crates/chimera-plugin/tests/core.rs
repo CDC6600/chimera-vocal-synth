@@ -180,6 +180,32 @@ fn a_ui_key_cannot_release_a_host_key_on_the_same_pitch() {
 }
 
 #[test]
+fn a_key_already_held_by_the_other_owner_sings_nothing_new() {
+    let shared = Shared::default();
+    let mut c = core(&shared);
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(c.singer().cursor(), 1);
+    // the UI presses what the host holds
+    shared.ui_note(UiNote { midi: 60, velocity: 96.0, on: true });
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.singer().cursor(), 1, "the host's syllable must not be replaced");
+    assert_eq!(shared.note_serial.load(Ordering::Relaxed), 1);
+    // and the other way round: the host lifts, the UI still holds; the host presses it again
+    run(&mut c, &shared, &[(0, off(60))], 256, |_| 256);
+    assert_eq!(c.singer().sounding_note(), Some(60));
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(c.singer().cursor(), 1);
+    // a repeat from the same owner is a new note, which keeps the lyrics in step with the song
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(c.singer().cursor(), 1);
+    shared.ui_note(UiNote { midi: 60, velocity: 96.0, on: false });
+    run(&mut c, &shared, &[(0, off(60))], 256, |_| 256);
+    run(&mut c, &shared, &[(0, on(60)), (10, off(60)), (20, on(60))], 256, |_| 256);
+    assert_eq!(c.singer().cursor(), 3);
+    assert_eq!(shared.note_serial.load(Ordering::Relaxed), 3);
+}
+
+#[test]
 fn closing_the_window_lifts_only_the_ui_keys() {
     let shared = Shared::default();
     let mut c = core(&shared);
@@ -368,6 +394,58 @@ fn a_restart_drops_what_was_queued_for_the_old_core() {
     assert_eq!(shared.revision.load(Ordering::Relaxed), revision + 1);
     run(&mut c, &shared, &[], 256, |_| 256);
     assert_eq!(c.singer().sounding_note(), None);
+    // and what is published after it still gets through
+    shared.ui_note(UiNote { midi: 62, velocity: 96.0, on: true });
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.singer().sounding_note(), Some(62));
+}
+
+/// Commands from the page carry the revision it last read: one from before a restore is dropped.
+#[test]
+fn a_command_from_before_a_restore_is_dropped() {
+    use chimera_plugin::bridge::{Bridge, ParamHost};
+    use chimera_plugin::ChimeraParams;
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone, Default)]
+    struct Host(Arc<Mutex<Vec<String>>>);
+    impl ParamHost for Host {
+        fn begin(&self, id: &str) {
+            self.0.lock().unwrap().push(format!("begin {id}"));
+        }
+        fn set(&self, id: &str, _plain: f32) {
+            self.0.lock().unwrap().push(format!("set {id}"));
+        }
+        fn end(&self, id: &str) {
+            self.0.lock().unwrap().push(format!("end {id}"));
+        }
+        fn values(&self) -> Vec<(String, f32)> {
+            Vec::new()
+        }
+    }
+    let params = Arc::new(ChimeraParams::default());
+    let shared = Arc::new(Shared::default());
+    let log = Host::default();
+    let bridge = Bridge::new(params.clone(), shared.clone(), Box::new(log.clone()));
+    shared.restart(FS);
+    let rev = shared.revision.load(Ordering::Relaxed);
+    let lyrics = || params.settings.read().unwrap().lyrics.clone();
+
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"lyrics","text":"current"}}"#));
+    assert_eq!(lyrics(), "current");
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"param","id":"fry","value":0.5}}"#));
+    assert_eq!(*log.0.lock().unwrap(), ["begin fry", "set fry"]);
+
+    shared.restart(FS);
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"lyrics","text":"stale"}}"#));
+    assert_eq!(lyrics(), "current", "a stale edit must not touch the restored project");
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"param","id":"fry","value":0.9}}"#));
+    assert_eq!(log.0.lock().unwrap().len(), 2, "nor move a restored parameter");
+    // but an open gesture still ends, or the VST3 layer would ignore automation on it
+    bridge.command(&format!(r#"{{"rev":{rev},"type":"paramEnd","id":"fry"}}"#));
+    assert_eq!(log.0.lock().unwrap().last().unwrap(), "end fry");
+    // a command without a revision doesn't parse, so can't slip past this
+    bridge.command(r#"{"type":"lyrics","text":"no revision"}"#);
+    assert_eq!(lyrics(), "current");
 }
 
 #[test]

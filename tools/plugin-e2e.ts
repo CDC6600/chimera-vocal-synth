@@ -107,6 +107,31 @@ try {
   await until("past the last syllable the lyrics wrap", async () => (await next()) === "one");
   await host("off", 62);
 
+  // ---- the piano roll and the words follow what Rust plays
+  const rollNotes = () => page.evaluate(() => (window as never as { __chimeraRoll: { notes: { midi: number; t0: number; t1: number | null; text: string }[] } }).__chimeraRoll.notes.map((n) => ({ ...n })));
+  await page.locator(".lyrics textarea").fill("la - la");
+  await until("lyrics with a melisma", async () => (await page.locator(".syl").count()) === 3);
+  const seen = (await rollNotes()).length;
+  await host("note", 60);
+  await until("a note goes on the roll", async () => (await rollNotes()).length === seen + 1);
+  await host("note", 64);
+  await until("a melisma adds its pitch to the roll", async () => (await rollNotes()).length === seen + 2);
+  check("as a held vowel, not a new syllable", (await rollNotes()).at(-1)?.text === "~", (await rollNotes()).at(-1));
+  await host("off", 64);
+  await until("releasing it glides back to the key still down", async () => (await rollNotes()).at(-1)?.text === "~");
+  await host("off", 60);
+  await until("the last release ends the note on the roll", async () => (await rollNotes()).at(-1)?.t1 !== null);
+  // the same pitch again, its release and press closer together than a poll
+  await host("note", 60);
+  await until("the next syllable", async () => (await rollNotes()).at(-1)?.t1 === null && (await rollNotes()).at(-1)?.text === "la");
+  const before2 = (await rollNotes()).length;
+  await host("off", 60);
+  await host("note", 60);
+  await until("a repeated pitch is a new note on the roll", async () => (await rollNotes()).length === before2 + 1);
+  await host("off", 60);
+  await page.locator(".lyrics textarea").fill("one two three");
+  await until("back to three syllables", async () => (await page.locator(".syl").count()) === 3);
+
   // ---- the transport
   await page.locator(".syl").nth(1).click();
   await until("a syllable picked while stopped takes the cursor", async () => (await next()) === "two");
@@ -149,6 +174,9 @@ try {
   await host("note", 69);
   await until("the new body sings", async () => (await tele())!.voicing > 0.3);
   await host("off", 69);
+  const clock = (await tele())!.clock;
+  const future = (await rollNotes()).filter((n) => n.t0 > clock + 0.5);
+  check("nothing from the old voice's timeline is on the roll", future.length === 0, future);
 
   // ---- Play
   await page.getByRole("radio", { name: "Play" }).click();
@@ -175,7 +203,11 @@ try {
 
   // ---- a project restored while the window is open
   await host("restore", JSON.stringify({ version: 1, lyrics: "la la land", body: { female: 0, child: 1 }, mode: "play", artic: { jaw: 1.5 }, tipFree: true, voiced: true, f0: 300, startSyllable: 0 }));
-  await until("a restore replaces the lyrics on the page", async () => (await page.locator(".right-play").count()) === 1);
+  await until("a restore replaces the mode on the page", async () => (await page.locator(".right-play").count()) === 1);
+  // a page that hasn't seen the restore yet can't overwrite it
+  await page.evaluate(() => window.ipc!.postMessage(JSON.stringify({ rev: -2, type: "lyrics", text: "stale" })));
+  await page.waitForTimeout(100);
+  check("a command from before the restore is dropped", (await state()).settings.lyrics === "la la land");
   check("and the mode", (await state()).settings.mode === "play");
   await until("and the voice", async () => (await tele())?.body.child === 1);
   await page.getByRole("radio", { name: "Sing" }).click();
@@ -197,7 +229,10 @@ try {
   await page.mouse.move(b2.x + b2.width / 2, b2.y + b2.height - 8);
   await page.mouse.down();
   await until("held", async () => (await tele())!.voicing > 0.3);
-  await page.evaluate(() => window.ipc!.postMessage(JSON.stringify({ type: "param", id: "fry", value: 0.3 })));
+  await page.evaluate(async () => {
+    const { revision } = await fetch("/state").then((r) => r.json());
+    window.ipc!.postMessage(JSON.stringify({ rev: revision, type: "param", id: "fry", value: 0.3 }));
+  });
   await page.waitForTimeout(50);
   await host("close");
   await until("closing the window lifts the key", async () => (await tele())!.voicing < 0.1);

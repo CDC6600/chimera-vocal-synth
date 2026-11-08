@@ -166,6 +166,9 @@ impl Default for TelemetryFrame {
 pub struct Shared {
     pending: Mutex<Pending>,
     dirty: AtomicBool,
+    /// held while the project's settings and `pending` change together, so an edit from the page
+    /// and a restore can't interleave. Never touched on the audio thread.
+    transaction: Mutex<()>,
     pub telemetry: Mutex<TelemetryFrame>,
     /// samples of telemetry still wanted
     watch: AtomicI64,
@@ -179,6 +182,8 @@ pub struct Shared {
     pub sung: AtomicI32,
     /// MIDI note sounding now (−1: none)
     pub note: AtomicI32,
+    /// bumped by every press, so the editor can tell a new note from the same pitch held
+    pub note_serial: AtomicU32,
     pub playing: AtomicBool,
     /// time spent in `process` and audio time rendered since the editor last read them (ns), and
     /// the worst block (a fraction of its duration)
@@ -193,6 +198,11 @@ pub struct Shared {
 impl Shared {
     fn lock(&self) -> std::sync::MutexGuard<'_, Pending> {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// See [`Shared::transaction`](#structfield.transaction). Don't call into the host under this.
+    pub fn transaction(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.transaction.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Change what the audio thread will take next. Main thread.
@@ -251,9 +261,12 @@ impl Shared {
     /// Start afresh, as `initialize` does: nothing queued is for the new [`Core`].
     pub fn restart(&self, sample_rate: f64) {
         let fresh = Pending { sample_rate, notes: Vec::with_capacity(MAX_UI_NOTES), ..Default::default() };
-        let old = std::mem::replace(&mut *self.lock(), fresh);
-        drop(old);
+        let mut p = self.lock();
+        let old = std::mem::replace(&mut *p, fresh);
+        // under the same lock: an edit published right after must keep its notification
         self.dirty.store(false, Ordering::Release);
+        drop(p);
+        drop(old);
         self.sample_rate.store(sample_rate.to_bits(), Ordering::Relaxed);
         self.faulted.store(false, Ordering::Relaxed);
         self.revision.fetch_add(1, Ordering::Relaxed);
@@ -298,6 +311,8 @@ pub struct Core {
     tele: VoiceTelemetry,
     block: Vec<f64>,
     labels: [u8; TELE_LABELS],
+    /// presses so far (see [`Shared::note_serial`])
+    presses: u32,
     /// samples until the next telemetry snapshot
     tele_due: i64,
     tele_every: i64,
@@ -337,6 +352,7 @@ impl Core {
             tele,
             block,
             labels: [0; TELE_LABELS],
+            presses: 0,
             tele_due: 0,
             tele_every: (sample_rate / TELEMETRY_RATE) as i64,
         };
@@ -382,6 +398,7 @@ impl Core {
     }
 
     fn press(&mut self, midi: u8, velocity: f64) {
+        self.presses = self.presses.wrapping_add(1);
         match self.mode {
             Mode::Sing => self.singer.note_on(&mut self.engine, midi, velocity),
             Mode::Play => {
@@ -483,7 +500,9 @@ impl Core {
             let bit = 1u128 << (n.midi & 127);
             if n.on {
                 self.ui_keys |= bit;
-                self.press(n.midi & 127, n.velocity);
+                if self.host_keys & bit == 0 {
+                    self.press(n.midi & 127, n.velocity);
+                }
             } else {
                 let held = self.ui_keys & bit != 0;
                 self.ui_keys &= !bit;
@@ -522,8 +541,12 @@ impl Core {
     pub fn event(&mut self, ev: Event) {
         match ev {
             Event::NoteOn { midi, velocity } => {
-                self.host_keys |= 1u128 << (midi & 127);
-                self.press(midi & 127, velocity);
+                let bit = 1u128 << (midi & 127);
+                self.host_keys |= bit;
+                // a repeat from the same owner is a new note; a key the UI already holds isn't
+                if self.ui_keys & bit == 0 {
+                    self.press(midi & 127, velocity);
+                }
             }
             Event::NoteOff { midi } => {
                 let bit = 1u128 << (midi & 127);
@@ -551,6 +574,7 @@ impl Core {
             Mode::Play => self.play_keys.last().map_or(-1, |m| *m as i32),
         };
         shared.note.store(note, Ordering::Relaxed);
+        shared.note_serial.store(self.presses, Ordering::Relaxed);
         let n = samples as i64;
         if shared.watch.fetch_sub(n, Ordering::Relaxed) <= 0 {
             shared.watch.store(0, Ordering::Relaxed);

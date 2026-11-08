@@ -188,30 +188,42 @@ function glide(midi: number, text: string): void {
   s.note = addNote(midi, t, text);
 }
 
+/** the note and press count last seen from the plugin */
+let pluginNote = -1;
+let pluginSerial = -1;
+
 /**
  * In the plugin Rust plays the notes, so the words at the mouth and the piano roll follow what it
- * reports. The same syllable at a new pitch is a glide, and keeps its place at the mouth.
+ * reports. A new press is a new syllable, unless it's a melisma on a vowel still sounding; a new
+ * pitch with no press is the glide back to a key still down.
  */
-export function followPluginNote(note: number, sung: number, clock: number): void {
+export function followPluginNote(note: number, sung: number, serial: number, clock: number): void {
+  const pressed = serial !== pluginSerial;
+  if (!pressed && note === pluginNote) return;
+  pluginSerial = serial;
+  pluginNote = note;
   const s = sounding;
-  if (note === (s?.midi ?? -1)) return;
   if (s) s.note.t1 = clock;
   if (note < 0) {
     sounding = null;
-    pluginSung = -1;
     return;
   }
-  const syl = useSing.getState().syllables[sung] ?? AH;
-  if (s && sung === pluginSung) {
+  const syls = useSing.getState().syllables;
+  const syl = syls[sung] ?? AH;
+  if (s && (!pressed || syl.melisma)) {
     s.midi = note;
-    s.note = addNote(note, clock, "~");
+    s.note = addNote(note, clock, pressed ? syl.text : "~");
   } else {
-    sounding = { midi: note, syl, tag: 0, note: addNote(note, clock, syl.text) };
-    pluginSung = sung;
+    sounding = { midi: note, syl: syl.melisma ? parentOf(syls, sung) : syl, tag: 0, note: addNote(note, clock, syl.text) };
   }
 }
-/** the syllable `sounding` is, in the plugin */
-let pluginSung = -1;
+
+/** The voice clock started again (a new voice or a restore): the roll's times no longer mean anything. */
+export function clearPluginNotes(): void {
+  roll.notes = [];
+  sounding = null;
+  pluginNote = -1;
+}
 
 export function singNoteOn(midi: number, velocity: number, body: BodyMix): void {
   stopDemo();

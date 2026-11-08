@@ -168,6 +168,8 @@ impl Plugin for Chimera {
         let fs = config.sample_rate as f64;
         let settings = self.params.settings.read().unwrap_or_else(|e| e.into_inner()).clone();
         let syllables = lyrics_to_syllables(&settings.lyrics, g2p());
+        let shared = self.shared.clone();
+        let _together = shared.transaction();
         self.shared.restart(fs);
         // below this the airway goes unstable: stay silent rather than refusing to activate, which
         // some hosts' plugin scans treat as an error

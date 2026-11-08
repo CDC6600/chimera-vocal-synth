@@ -65,7 +65,8 @@ keeps one code path.
 
 **Who holds a note.** A pitch can be held by the host's MIDI and by the on-screen keys at once. Core
 keeps one mask for each and tells the `Singer` only about the first press and the last release, as
-`src/ui/midi.ts` does across keyboards.
+`src/ui/midi.ts` does across keyboards. A repeated note-on from the same owner is still a new note, so
+overlapping notes in a piano roll keep the lyrics in step.
 
 ## Real-time safety
 
@@ -160,6 +161,12 @@ Rust to page, `fetch` over the custom protocol:
   collects no telemetry.
 - `/state`, JSON: the whole snapshot of `Settings`, parameters and syllables.
 
+**A restore is a boundary.** Every command carries the revision the page last adopted, and Rust drops
+one from before a restore (except the end of a gesture, which must still close). The page sends edits
+at once instead of coalescing them per frame, so none can wait out a restore. A short transaction lock,
+never on the audio thread, keeps a command's settings and its `Pending` change together against
+`initialize`.
+
 **One owner for each value.** `mount()` awaits a `/state` snapshot and fills the stores before the
 first render, and in plugin mode `start()` sends nothing: replaying browser defaults would overwrite
 a restored project. After that:
@@ -168,7 +175,9 @@ a restored project. After that:
   `/poll` changes, which means a restore happened.
 - Parameters can also change from the host, so the page polls them 20 times a second and skips any
   with a gesture open.
-- The cursor, sung syllable and sounding note are read from every poll.
+- The cursor, sung syllable, sounding note and a press count are read from every poll. The count tells
+  a new note on the same pitch from one held. The piano roll and the words at the mouth follow these,
+  and clear when the voice clock starts again.
 
 `AudioEngine` keeps its interface: `send()` goes to the bridge instead of the worklet port. In plugin
 mode `store.ts` and `singing.ts` send notes and lyrics to Rust and take the syllables, the cursor and
