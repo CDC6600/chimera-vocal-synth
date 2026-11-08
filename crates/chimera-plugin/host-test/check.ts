@@ -17,6 +17,10 @@ const BEAT_LATENCY = 0.18;
 const RATES = [44100, 48000];
 /** Two renders of one case are the same sound when they differ by less than this, relative to it (dB). */
 const SAME_SOUND = -40;
+/** How far macos/host-test.sh drags the grip inwards (points), and what the window may differ by. */
+const GRIP_DRAG = [100, 60], GRIP_SLACK = 3;
+/** REAPER's title bar and toolbar above the editor (points): CHROME in macos/host-test.sh. */
+const REAPER_CHROME = 54;
 /** Above this a stretch is sounding, and below SILENT it isn't. */
 const SOUNDING = 1e-3, SILENT = 1e-4;
 
@@ -207,7 +211,12 @@ for (const r of records) {
       continue;
     }
     check(`${name} click reached the plugin`, r.mode === "beatbox", `mode ${r.mode}, reported delay ${r.pdc}`);
-    check(`${name} grip resized it`, r.window !== r.opened, `${r.opened} to ${r.window}`);
+    // the window as the driver saw it: the saved size alone can't tell a refusal from a resize
+    const [before, after] = readFileSync(`${folder}/bounds-${r.format}.txt`, "utf8").trim().split("\n").map((l) => l.trim().split(" ").map(Number));
+    const narrower = before[2] - after[2], lower = before[3] - after[3];
+    check(`${name} grip resized the window`, Math.abs(narrower - GRIP_DRAG[0]) <= GRIP_SLACK && Math.abs(lower - GRIP_DRAG[1]) <= GRIP_SLACK, `${before[2]}x${before[3]} to ${after[2]}x${after[3]}`);
+    const [w, h] = String(r.window).split(",").map(Number);
+    check(`${name} the project keeps that size`, w === after[2] && h === after[3] - REAPER_CHROME, `saved ${r.window}`);
     continue;
   }
   if (r.error) {

@@ -84,11 +84,9 @@ editor() { # format
   read -r x y w h <<<"$(bounds)" || true
   echo "$fmt window: ${x:-?} ${y:-?} ${w:-?} ${h:-?}"
   case "${h:-}" in '' | *[!0-9]*) return 0 ;; esac
-  if [ "$fmt" = AU ]; then
-    # REAPER's own toggle between the plugin's view and its generic sliders
-    cliclick "c:$((x + w - 72)),$((y + 39))"
-    sleep 3
-    shot "$fmt-ui-button"
+  # REAPER's generic sliders come in a small window of their own
+  if [ "$w" -lt 700 ]; then
+    echo "::warning::$fmt shows REAPER's generic sliders, not the plugin's view"
     return 0
   fi
   view_h=$((h - CHROME))
@@ -99,11 +97,13 @@ editor() { # format
   cliclick "c:$tab_x,$tab_y"
   sleep 3
   shot "$fmt-beatbox"
-  gx=$((x + w - 5))
-  gy=$((y + h - 5))
+  # inside the grip, and clear of the host window's own corner just outside it
+  gx=$((x + w - 8))
+  gy=$((y + h - 8))
   cliclick "m:$gx,$gy" w:200 "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
   sleep 3
-  echo "$fmt window after the grip: $(bounds)"
+  { echo "$x $y $w $h"; bounds; } >"$out/bounds-$fmt.txt"
+  echo "$fmt window after the grip: $(tail -1 "$out/bounds-$fmt.txt")"
   shot "$fmt-resized"
 }
 
@@ -120,46 +120,62 @@ config="$HOME/Library/Application Support/REAPER"
 mkdir -p "$config/Scripts"
 cp "$here/host-test/host_test.lua" "$config/Scripts/__startup.lua"
 
-env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS=CLAP,VST3,AU CHIMERA_TEST_EDITOR=1 \
-  "$work/REAPER.app/Contents/MacOS/REAPER" -nosplash >"$out/reaper.log" 2>&1 &
-pid=$!
-
-deadline=$((SECONDS + 420))
-started=0
-first_shot=$((SECONDS + 60))
-while [ ! -e "$out/finished" ]; do
-  if [ "$SECONDS" -gt "$deadline" ]; then
-    echo "::warning::REAPER didn't finish in time"
-    break
-  fi
-  if ! kill -0 "$pid" 2>/dev/null; then
-    echo "::warning::REAPER stopped by itself"
-    break
-  fi
-  answered=$(dialogs)
-  [ -z "$answered" ] || echo "answered $answered"
-  if [ "$started" = 0 ] && [ "$SECONDS" -gt "$first_shot" ]; then
-    started=1
-    shot start
-  fi
-  for marker in "$out"/at-*; do
-    [ -e "$marker" ] || continue
-    step=${marker##*/at-}
-    rm "$marker"
-    case "$step" in editor-*) editor "${step#editor-}" ;; esac
-    touch "$out/go-$step"
+run_reaper() { # formats
+  local pid deadline started first_shot marker step answered
+  rm -f "$out/finished"
+  # 48 kHz: what this Mac's sound device runs at, so what REAPER prepares plugins at
+  env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS="$1" CHIMERA_TEST_EDITOR=1 CHIMERA_TEST_RATE=48000 \
+    "$work/REAPER.app/Contents/MacOS/REAPER" -nosplash >>"$out/reaper.log" 2>&1 &
+  pid=$!
+  deadline=$((SECONDS + 420))
+  started=0
+  first_shot=$((SECONDS + 60))
+  while [ ! -e "$out/finished" ]; do
+    if [ "$SECONDS" -gt "$deadline" ]; then
+      echo "::warning::REAPER didn't finish in time"
+      break
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "::warning::REAPER stopped by itself"
+      break
+    fi
+    answered=$(dialogs)
+    [ -z "$answered" ] || echo "answered $answered"
+    if [ "$started" = 0 ] && [ "$SECONDS" -gt "$first_shot" ]; then
+      started=1
+      shot "start-$1"
+    fi
+    for marker in "$out"/at-*; do
+      [ -e "$marker" ] || continue
+      step=${marker##*/at-}
+      rm "$marker"
+      case "$step" in editor-*) editor "${step#editor-}" ;; esac
+      touch "$out/go-$step"
+    done
+    sleep 0.5
   done
-  sleep 0.5
-done
-shot end
-kill "$pid" 2>/dev/null || true
-sleep 2
-kill -9 "$pid" 2>/dev/null || true
+  shot "end-$1"
+  kill "$pid" 2>/dev/null || true
+  sleep 2
+  kill -9 "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
+run_reaper CLAP,VST3
+
+# Alone, as in a host that only takes AU: all three bundles hold one binary, and in one process their
+# Objective-C classes share names, which a host's lookup of the AU's view may trip over.
+plugins="$HOME/Library/Audio/Plug-Ins"
+mkdir -p "$work/hidden"
+mv "$plugins/CLAP/CHIMERA.clap" "$plugins/VST3/CHIMERA.vst3" "$work/hidden/"
+echo "--- the AU's view, loaded as Apple documents for hosts"
+clang -fobjc-arc -framework AppKit -framework AudioToolbox -framework AudioUnit "$here/host-test/au_view.m" -o "$work/au_view" 2>&1 || true
+"$work/au_view" 2>&1 | grep -v 'clap-wrapper\|^$' | tail -20 || true
+run_reaper AU
+mv "$work/hidden/CHIMERA.clap" "$plugins/CLAP/"
+mv "$work/hidden/CHIMERA.vst3" "$plugins/VST3/"
 
 tail -20 "$out/reaper.log" || true
 grep -il chimera "$config"/*.ini 2>/dev/null | while read -r f; do echo "--- $f"; grep -i -B1 -A1 chimera "$f" | cut -c1-160; done || true
-
-echo "--- the AU's view, loaded as Apple documents for hosts"
-swift "$here/host-test/au_view.swift" 2>&1 | tail -20 || true
 
 bun "$here/host-test/check.ts" "$out"

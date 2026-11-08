@@ -142,7 +142,8 @@ impl ParamHost for WindowHost {
         let mut drag = self.drag.lock().unwrap_or_else(|e| e.into_inner());
         match action {
             GripAction::Begin => {
-                *drag = Some((self.size(), pointer()));
+                // the view's size, not the saved one: the window may be smaller to fit the screen
+                *drag = Some((self.view_size(), pointer()));
                 *self.settling.lock().unwrap_or_else(|e| e.into_inner()) = 0;
             }
             GripAction::Move => {

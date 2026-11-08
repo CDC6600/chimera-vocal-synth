@@ -4,14 +4,16 @@
 -- See docs/plugin.md, "Testing in a host".
 --
 -- Environment: CHIMERA_TEST_OUT (a folder), CHIMERA_TEST_FORMATS ("CLAP,VST3,AU"),
--- CHIMERA_TEST_EDITOR (1 to open the editors: Linux has none).
+-- CHIMERA_TEST_EDITOR (1 to open the editors: Linux has none), CHIMERA_TEST_RATE (Hz).
 
 local OUT = os.getenv("CHIMERA_TEST_OUT")
-local FS, BPM = 44100, 120
+-- the rate REAPER runs its plugins at until it renders: rendering at another restarts a VST3 partway
+-- through, because Beatbox's latency in samples changes (docs/plugin.md, "Testing in a host")
+local FS, BPM = tonumber(os.getenv("CHIMERA_TEST_RATE") or "44100"), 120
 local FORMATS = {}
 for f in (os.getenv("CHIMERA_TEST_FORMATS") or "CLAP"):gmatch("[^,]+") do FORMATS[#FORMATS + 1] = f end
 
-local results = io.open(OUT .. "/results.jsonl", "w")
+local results = io.open(OUT .. "/results.jsonl", "a")
 local function json(v)
   if type(v) == "string" then return '"' .. v:gsub('[\\"]', "\\%0"):gsub("%c", " ") .. '"' end
   if type(v) ~= "table" then return tostring(v) end
