@@ -482,3 +482,26 @@ fn a_small_window_zooms_out_and_a_large_one_doesnt() {
         assert!(w as f64 / z >= LAYOUT_MIN.0 as f64 - 1e-9 && h as f64 / z >= LAYOUT_MIN.1 as f64 - 1e-9);
     }
 }
+
+/// Found by review: `initialize` read the settings before taking the transaction, so an edit landing
+/// in between was saved and shown but never reached the audio thread.
+#[test]
+fn an_edit_during_a_rebuild_reaches_the_rebuilt_core() {
+    use chimera_plugin::{ChimeraParams, rebuild};
+    use std::sync::Arc;
+    let params = Arc::new(ChimeraParams::default());
+    let shared = Arc::new(Shared::default());
+    shared.restart(FS);
+    // a command from the page, in the middle of its transaction
+    let command = shared.transaction();
+    let (p, s) = (params.clone(), shared.clone());
+    let voice = params.voice();
+    let activating = std::thread::spawn(move || drop(rebuild(&p, &s, voice, FS)));
+    // long enough for a rebuild that reads first to have read
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    params.settings.write().unwrap().lyrics = "no".to_string();
+    drop(command);
+    activating.join().unwrap();
+    let sung = shared.syllables.lock().unwrap();
+    assert_eq!(sung.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(), ["no"], "the rebuilt instrument has the edit");
+}

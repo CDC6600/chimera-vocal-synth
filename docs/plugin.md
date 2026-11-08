@@ -203,9 +203,12 @@ goes back to the first size.
 
 - **`request_resize`'s answer can't be trusted.** clap-wrapper's VST3 layer tests `!resizeView(...)`, and
   `kResultOk` is 0, so success returns false and failure true. Its AU layer sets the frame and always
-  returns false. So Rust reads the host view's frame afterwards: if it matches, the size stands; if
-  not and the call said true (a CLAP host may resize later), the size stands too; otherwise the stored
-  size goes back to the frame's.
+  returns false. So Rust ignores the answer, and half a second after the grip is let go it takes the
+  host view's real size as the window's: a host may have refused or clamped it, and a CLAP host may
+  resize a little after it's asked.
+- **A host may refuse.** clap-wrapper's `onSize` reports failure while `can_resize` is false, and a host
+  that honours that keeps its old size. Only a test in each host can tell; if FL Studio does, the way
+  out is `can_resize` in a nih-plug fork, which would also give dragging the border.
 - **The webview follows the host's view** through its autoresizing mask (wry fixes a child's size, so
   the editor changes the mask after building it). Nothing calls `set_bounds`: a host that resizes
   after the call returns would grow the webview twice. The zoom follows the view's real size too, read
@@ -233,6 +236,10 @@ line breaks, and punctuation inside one makes phrases with pauses, as on the web
 The page takes what's being said from Rust: `/poll` carries a spoken serial, the line and the voice
 clock of its time 0; when the serial changes the page fetches `/speech/<line>` (the phrases and the
 plan), and the score, the sound readout and the words at the mouth work as they do on the website.
+Every set of plans has a generation, published with the serial and returned with the plan. Audio can
+be sounding from plans already replaced (the text changed during a line), so a reply from another
+generation is dropped rather than drawn over the wrong sound. The pads' one-shot has its own generation
+and its own route.
 
 ## The live spectrum
 
@@ -251,17 +258,22 @@ This makes the hard cases simple:
 
 - The first hit after pressing play has its full set-up, and lands on the grid.
 - A step is scheduled when the transport reaches it, not predicted ahead, so a loop or a seek leaves
-  nothing to cancel: hits in flight belong to the time before the jump. Steps never double or go
-  missing on a continuous transport, because a step number is kept and only a real jump (more than
-  5 ms of beats from where the last block ended) looks it up again.
-- A tempo change needs no anchor: each block uses the host's position and tempo.
+  nothing to cancel: hits in flight belong to the time before the jump.
+- Each step's time comes from the host's position in that block, so a tempo change needs no anchor.
 
-The latency is 0 in every other mode, because live playing can't take it. So changing into or out of
-Beatbox while the host is running asks it to restart the plugin (nih-plug's `set_latency_samples`):
-`initialize` rebuilds `Core` from `Settings`, and the page adopts the new revision. A short gap at a
-mode change is accepted. **Known limit:** clap-wrapper's AU layer ignores that restart, so an AU host
-learns the latency only when it next activates the plugin. A host without delay compensation hears
-everything 180 ms late.
+**Changing mode.** The latency is 0 in every other mode, because live playing can't take it. A new mode
+and its timing take effect on the audio thread at once, through `Pending`, and don't depend on
+`initialize` running again. What the host then does depends on the format, because nih-plug calls
+`request_restart` while processing and `latency.changed` otherwise:
+
+- **CLAP:** the host restarts the plugin, so there's a short gap and `initialize` rebuilds `Core`.
+- **VST3:** clap-wrapper turns it into `restartComponent(kLatencyChanged)`, and the host reads the new
+  latency. It may or may not reactivate.
+- **AU (known limit):** clap-wrapper ignores `request_restart`, so while processing the host isn't told.
+  Compensation stays as it was, and hits are 180 ms off in one direction or the other until the host
+  next activates the plugin (reloading the project does it). That is a lasting timing error, not a gap,
+  and fixing it means patching clap-wrapper.
+- A host with no delay compensation hears everything in Beatbox 180 ms late.
 
 **The sequencer** follows the host while it is playing and gives a position and tempo (Follow Host in
 the transport panel, on by default, saved). The pattern's step number comes from the host's position,
@@ -270,11 +282,30 @@ second way in beside the voice-clock `tick`: `follow`, which schedules the steps
 While the host is stopped, the Play Beat button runs the pattern on the voice clock at its own tempo,
 as on the website; a host starting takes over from it.
 
-**Notes.** Host notes below C4 (60) are pads, on the General MIDI drum map so drum clips play as they
-are: 35, 36 kick; 37 rimshot; 38 snare; 39 click; 40 inward snare; 41, 43, 45 lip pop; 42, 44 hi-hat;
-46 open hat; 49, 51, 52, 53, 55, 57, 59 crash. Others below 60 are ignored. C4 and up hum, two octaves
-down, so a bass line sits on the keyboard's middle. Velocity sets the accent. The on-screen keys hum at
-the pitch they show, and the pads have their own buttons.
+`follow` keeps the next step's number and asks only where each block starts:
+
+- Steps fire when the position reaches them, and a step's number only moves forward, so a host that
+  repeats a position for a block, or reports a slightly uneven one, can't double a hit. A step reached
+  late still gets its true time, since `BEAT_LATENCY` leaves room.
+- Only a jump of more than two blocks (or a quarter of a step, whichever is more) from where the last
+  block ended looks the step up again.
+- While the position is negative (a host's pre-roll) nothing fires; step 0 waits for beat 0.
+- **Known limit:** nih-plug makes up beats from seconds and the current tempo for a host that gives no
+  beats, and doesn't say so. In such a host a tempo change moves the position, and the pattern jumps
+  phase. Hosts that give beats, FL Studio among them, aren't affected.
+
+Output follows the host's positions, so the block-size independence test covers the steps' times to
+within rounding, not bit for bit. A free-running beat is bit-identical as before.
+
+**Notes.** Host notes below C4 (60) are pads, with General MIDI's drum kit mapped onto the ten mouth
+sounds, so a drum clip plays straight away, as beatbox rather than as its original kit: 35, 36 kick; 37
+rimshot; 38 snare; 39 click; 40 inward snare; 41, 43, 45, 47, 48, 50 lip pop; 42, 44 hi-hat; 46 open hat;
+49, 51, 52, 53, 55, 57, 59 crash. Others below 60 are ignored. C4 and up hum, two octaves down, so a bass
+line sits on the keyboard's middle. Velocity sets the accent. The on-screen keys hum at the pitch they
+show, and the pads have their own buttons.
+
+Because the same MIDI number means a different pitch from each owner here, the shared press and release
+masks don't apply in Beatbox: held hums are kept per owner, as sounding pitches.
 
 While the host is playing, a note's hit goes `BEAT_LATENCY` after the note, on the grid. While it's
 stopped, it goes as soon as the mouth can make it (the website's `beat_hit`), because someone is
@@ -288,8 +319,8 @@ only in Beatbox with Close Mic on (saved, on by default). It isn't bit-identical
 
 **State.** `Settings` gains `speech { text, ipa, rate, startLine }` and `beat { steps, bpm, swing,
 preset, mic, follow }`, each with defaults, so older projects load. `playing` isn't saved. Entering
-Beatbox sets the ready posture as the website does, sent by the page before the mode so that a restart
-can't separate them.
+Beatbox sets the ready posture as the website does. Rust does that as part of the mode command, under
+one transaction and in one `Pending` edit, so neither a held note nor a restore can separate them.
 
 ## Testing without a Mac or a DAW
 

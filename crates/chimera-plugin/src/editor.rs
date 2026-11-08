@@ -27,6 +27,9 @@ use crate::ChimeraParams;
 
 /// NSViewWidthSizable | NSViewHeightSizable
 const FOLLOW_SUPERVIEW: usize = 2 | 16;
+/// Polls after the grip lets go before the host's view is taken as the answer (about half a second:
+/// a CLAP host may resize a little after it's asked).
+const SETTLE_POLLS: u32 = 30;
 
 pub struct WebEditor {
     params: Arc<ChimeraParams>,
@@ -61,6 +64,8 @@ struct WindowHost {
     drag: Mutex<Option<((u32, u32), CGPoint)>>,
     /// the view size the page's zoom was set for
     zoomed_for: Mutex<(u32, u32)>,
+    /// polls until the view's size is taken as the window's
+    settling: Mutex<u32>,
 }
 
 // SAFETY: the bridge calls this from the host's main thread, while the editor is open.
@@ -87,15 +92,15 @@ impl WindowHost {
         if asked == self.size() {
             return;
         }
-        // `request_resize` reports the editor's `size()`, so that changes first
+        // `request_resize` reports the editor's `size()`, so that changes first. Its answer means
+        // nothing here: clap-wrapper's VST3 layer returns false on success and true on failure, and
+        // its AU layer always returns false. `tick` looks at what really happened once the grip is let go.
         self.store(asked);
-        let accepted = self.host.context.request_resize();
-        // The answer alone doesn't say: clap-wrapper's VST3 layer returns false on success, and its
-        // AU layer always does. Only a host that accepted and hasn't resized yet may still do so.
-        let now = self.view_size();
-        if now != asked && !accepted {
-            self.store(now);
-        }
+        let _ = self.host.context.request_resize();
+    }
+
+    fn settle(&self) {
+        *self.settling.lock().unwrap_or_else(|e| e.into_inner()) = SETTLE_POLLS;
     }
 }
 
@@ -121,7 +126,10 @@ impl ParamHost for WindowHost {
     fn grip(&self, action: GripAction) {
         let mut drag = self.drag.lock().unwrap_or_else(|e| e.into_inner());
         match action {
-            GripAction::Begin => *drag = Some((self.size(), pointer())),
+            GripAction::Begin => {
+                *drag = Some((self.size(), pointer()));
+                *self.settling.lock().unwrap_or_else(|e| e.into_inner()) = 0;
+            }
             GripAction::Move => {
                 let Some(((w, h), from)) = *drag else { return };
                 let to = pointer();
@@ -129,15 +137,29 @@ impl ParamHost for WindowHost {
                 let height = h as f64 + from.y - to.y;
                 self.resize(((width.round().max(0.0) as u32).clamp(WINDOW_MIN.0, WINDOW_MAX.0), (height.round().max(0.0) as u32).clamp(WINDOW_MIN.1, WINDOW_MAX.1)));
             }
+            GripAction::End => {
+                *drag = None;
+                self.settle();
+            }
             GripAction::Reset => {
                 *drag = None;
                 self.resize(WINDOW_DEFAULT);
+                self.settle();
             }
         }
     }
-    /// The page's zoom follows the host's view, whichever way that came to change.
+    /// The page's zoom follows the host's view, whichever way that came to change, and once the
+    /// grip has settled the view's size is the window's: a host may have refused or clamped it.
     fn tick(&self) {
         let now = self.view_size();
+        let mut settling = self.settling.lock().unwrap_or_else(|e| e.into_inner());
+        if *settling > 0 {
+            *settling -= 1;
+            if *settling == 0 {
+                self.store(now);
+            }
+        }
+        drop(settling);
         let mut zoomed_for = self.zoomed_for.lock().unwrap_or_else(|e| e.into_inner());
         if *zoomed_for != now {
             let webview = self.webview.load(Ordering::Relaxed);
@@ -173,7 +195,7 @@ impl Editor for WebEditor {
 
         let size @ (width, height) = self.size();
         let webview_ptr = Arc::new(AtomicPtr::new(null_mut()));
-        let host = WindowHost { host: GuiHost::new(self.params.clone(), context), params: self.params.clone(), view, webview: webview_ptr.clone(), drag: Mutex::new(None), zoomed_for: Mutex::new(size) };
+        let host = WindowHost { host: GuiHost::new(self.params.clone(), context), params: self.params.clone(), view, webview: webview_ptr.clone(), drag: Mutex::new(None), zoomed_for: Mutex::new(size), settling: Mutex::new(0) };
         let bridge = Arc::new(Bridge::new(self.params.clone(), self.shared.clone(), Box::new(host)));
 
         let serving = bridge.clone();

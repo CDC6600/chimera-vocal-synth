@@ -5,8 +5,10 @@ import { grip } from "../../audio/pluginBridge.ts";
 export function ResizeGrip() {
   const drag = useRef<{ raf: number } | null>(null);
   const end = () => {
-    if (drag.current) cancelAnimationFrame(drag.current.raf);
+    if (!drag.current) return;
+    cancelAnimationFrame(drag.current.raf);
     drag.current = null;
+    grip("end");
   };
   return (
     <div

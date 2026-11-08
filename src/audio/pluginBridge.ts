@@ -59,7 +59,7 @@ export function gestureOpen(id: string): boolean {
 }
 
 /** The window's grip. Rust reads the pointer itself: the page's coordinates change with its zoom. */
-export function grip(action: "begin" | "move" | "reset"): void {
+export function grip(action: "begin" | "move" | "end" | "reset"): void {
   ipc({ type: "grip", action });
 }
 

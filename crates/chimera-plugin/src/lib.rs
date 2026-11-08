@@ -34,6 +34,25 @@ pub fn g2p() -> &'static EnglishG2P {
     })
 }
 
+/// Build the instrument from the project, as the host activates or restores it. `None` below
+/// [`MIN_SAMPLE_RATE`].
+///
+/// The transaction comes before reading the settings: a command from the page then either finished
+/// first, and is in them, or waits and finds a new revision, and is dropped. Read outside it, an edit
+/// landing in between would be saved and shown but never reach the audio thread.
+pub fn rebuild(params: &ChimeraParams, shared: &Shared, voice: VoiceParams, fs: f64) -> Option<Core> {
+    let _together = shared.transaction();
+    let settings = params.settings.read().unwrap_or_else(|e| e.into_inner()).clone();
+    let syllables = lyrics_to_syllables(&settings.lyrics, g2p());
+    shared.restart(fs);
+    // below this the airway goes unstable: stay silent rather than refusing to activate, which
+    // some hosts' plugin scans treat as an error
+    let core = (fs >= MIN_SAMPLE_RATE).then(|| Core::new(fs, &settings, &syllables, voice, shared));
+    *shared.syllables.lock().unwrap_or_else(|e| e.into_inner()) = syllables;
+    shared.syllables_version.fetch_add(1, Ordering::Relaxed);
+    core
+}
+
 /// The host parameters. Their IDs are permanent once released: saved projects refer to them.
 #[derive(Params)]
 pub struct ChimeraParams {
@@ -99,7 +118,7 @@ impl Default for ChimeraParams {
 }
 
 impl ChimeraParams {
-    fn voice(&self) -> VoiceParams {
+    pub fn voice(&self) -> VoiceParams {
         VoiceParams {
             vibrato: self.vibrato.value(),
             vibrato_rate: self.vibrato_rate.value(),
@@ -170,19 +189,10 @@ impl Plugin for Chimera {
     // Runs where the host activates or restores, with `process` held off by nih-plug's plugin lock.
     fn initialize(&mut self, _layout: &AudioIOLayout, config: &BufferConfig, _context: &mut impl InitContext<Self>) -> bool {
         let fs = config.sample_rate as f64;
-        let settings = self.params.settings.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let syllables = lyrics_to_syllables(&settings.lyrics, g2p());
-        let shared = self.shared.clone();
-        let _together = shared.transaction();
-        self.shared.restart(fs);
-        // below this the airway goes unstable: stay silent rather than refusing to activate, which
-        // some hosts' plugin scans treat as an error
-        self.core = (fs >= MIN_SAMPLE_RATE).then(|| Core::new(fs, &settings, &syllables, self.params.voice(), &self.shared));
+        self.core = rebuild(&self.params, &self.shared, self.params.voice(), fs);
         if self.core.is_none() {
             nih_error!("CHIMERA needs a sample rate of at least {MIN_SAMPLE_RATE} Hz; it stays silent");
         }
-        *self.shared.syllables.lock().unwrap_or_else(|e| e.into_inner()) = syllables;
-        self.shared.syllables_version.fetch_add(1, Ordering::Relaxed);
         self.mono = vec![0.0; config.max_buffer_size as usize];
         true
     }

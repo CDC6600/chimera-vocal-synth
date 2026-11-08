@@ -48,6 +48,7 @@ pub enum GripAction {
     Begin,
     /// the pointer moved: the editor reads where to
     Move,
+    End,
     /// back to the first size
     Reset,
 }

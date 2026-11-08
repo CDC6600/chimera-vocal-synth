@@ -12,7 +12,7 @@ use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera_plugin::ChimeraParams;
 use chimera_plugin::bridge::{Bridge, GripAction, ParamHost};
 use chimera_plugin::core::{Core, Event, Settings, Shared, Transport, VoiceParams};
-use chimera_plugin::g2p;
+use chimera_plugin::{g2p, rebuild};
 use nih_plug::prelude::Params;
 
 /// Stands in for a host: parameter values, kept here, and a log the test can read.
@@ -86,12 +86,10 @@ fn main() {
                 let started = Instant::now();
                 let voice = voice_params(&values.lock().unwrap());
                 if let Some(s) = restore.lock().unwrap().take() {
-                    let syllables = lyrics_to_syllables(&s.lyrics, g2p());
-                    shared.restart(fs);
-                    core = Core::new(fs, &s, &syllables, voice, &shared);
-                    *shared.syllables.lock().unwrap() = syllables;
-                    shared.syllables_version.fetch_add(1, Ordering::Relaxed);
                     *params.settings.write().unwrap() = s;
+                    if let Some(rebuilt) = rebuild(&params, &shared, voice, fs) {
+                        core = rebuilt;
+                    }
                 }
                 let on = playing.load(Ordering::Relaxed);
                 position = if on { position + 0.01 } else { 0.0 };
