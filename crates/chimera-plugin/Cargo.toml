@@ -1,6 +1,6 @@
 [package]
 name = "chimera-plugin"
-description = "CHIMERA as a VST3/CLAP instrument: MIDI notes sing the lyrics, with a webview editor"
+description = "CHIMERA as a CLAP, VST3 and AU instrument: MIDI notes sing the lyrics, with a webview editor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 chimera = { path = "../chimera" }
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false, features = ["assert_process_allocs"] }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false }
 clap-wrapper = "=0.3.1"
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }

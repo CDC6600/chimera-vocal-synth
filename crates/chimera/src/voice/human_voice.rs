@@ -116,6 +116,14 @@ impl SourcePatch {
 pub const SCOPE_POINTS: usize = 256;
 const SCOPE_LEN: usize = 4096;
 
+/// Scalars at the head of the flat telemetry block, in order: phLen, orLen, velumPort, f0, voicing,
+/// pLung, outRms, noiseLevel, noiseNode, gate, clock, then the array lengths nArtic, nPh, nOr,
+/// nScope, nActive. The arrays follow: artic, phAreas, orAreas, pressureRms (nPh+nOr),
+/// flow (nPh+nOr), glottalArea (nScope), glottalFlow (nScope).
+pub const TELE_HEADER: usize = 16;
+/// Size of the active-label area: up to 4 × (length byte, 24 bytes).
+pub const TELE_LABELS: usize = 4 * 25;
+
 /// Fixed-size telemetry snapshot (~60 Hz) for visuals. Buffers are reused between snapshots.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +149,43 @@ pub struct VoiceTelemetry {
     pub clock: f64,
     /// labels of gestures active now (at most 4)
     pub active: Vec<Label>,
+}
+
+impl VoiceTelemetry {
+    /// The snapshot as one flat block (see [`TELE_HEADER`]) and its active labels. Allocates only
+    /// if `block` lacks the capacity.
+    pub fn write_flat(&self, block: &mut Vec<f64>, labels: &mut [u8]) {
+        let t = self;
+        block.clear();
+        block.extend_from_slice(&[t.ph_len, t.or_len, t.velum_port, t.f0, t.voicing, t.p_lung, t.out_rms, t.noise_level, t.noise_node as f64, t.gate, t.clock]);
+        block.extend_from_slice(&[t.artic.len() as f64, t.ph_areas.len() as f64, t.or_areas.len() as f64, t.glottal_area.len() as f64, t.active.len() as f64]);
+        debug_assert_eq!(block.len(), TELE_HEADER);
+        for arr in [&t.artic, &t.ph_areas, &t.or_areas, &t.pressure_rms, &t.flow, &t.glottal_area, &t.glottal_flow] {
+            block.extend(arr.iter().map(|x| *x as f64));
+        }
+        for (i, l) in t.active.iter().enumerate() {
+            let bytes = l.as_bytes();
+            labels[i * 25] = bytes.len() as u8;
+            labels[i * 25 + 1..i * 25 + 1 + bytes.len()].copy_from_slice(bytes);
+        }
+    }
+
+    /// Room for every array at `n_tract` tube sections, so later snapshots of up to that size don't
+    /// allocate. `block` is the flat block for [`VoiceTelemetry::write_flat`].
+    pub fn reserve(&mut self, n_tract: usize, block: &mut Vec<f64>) {
+        fn room<T>(v: &mut Vec<T>, n: usize) {
+            v.reserve(n.saturating_sub(v.len()));
+        }
+        room(&mut self.artic, N_ARTIC);
+        room(&mut self.ph_areas, n_tract);
+        room(&mut self.or_areas, n_tract);
+        room(&mut self.pressure_rms, n_tract);
+        room(&mut self.flow, n_tract);
+        room(&mut self.glottal_area, SCOPE_POINTS);
+        room(&mut self.glottal_flow, SCOPE_POINTS);
+        room(&mut self.active, 4);
+        room(block, TELE_HEADER + N_ARTIC + 4 * n_tract + 2 * SCOPE_POINTS);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -196,6 +241,8 @@ pub struct HumanVoice {
     lim_release: f64,
     /// tissue may compress this far (cm) before the palate stops the articulator
     pub max_penetration: f64,
+    /// pitch bend (ratio), on top of whatever sets the pitch
+    pub bend: f64,
 }
 
 impl HumanVoice {
@@ -250,6 +297,7 @@ impl HumanVoice {
             lim_hold_n: crate::math::js_round(0.025 * fs_out) as i64,
             lim_release: exp(-1.0 / (0.2 * fs_out)),
             max_penetration: 0.1,
+            bend: 1.0,
         };
         let x = v.artic.x;
         v.airway.apply(&x, 0.0);
@@ -497,7 +545,7 @@ impl HumanVoice {
         self.glottis.params.effort = clamp(((self.source.pressure * self.gate).abs() - 3.0) / 10.0, 0.0, 1.0);
         // pitch glide
         let g = js_max(0.002, if self.score_f0.is_some() { 0.03 } else { self.source.glide });
-        self.f0 *= pow(f0_target / self.f0, 1.0 - exp(-dt / g));
+        self.f0 *= pow(f0_target * self.bend / self.f0, 1.0 - exp(-dt / g));
         self.glottis.params.f0 = self.f0;
         // smoothed mean flow per tract node (for particle speeds)
         let a = 1.0 - exp(-dt / 0.03);

@@ -38,7 +38,7 @@ use chimera::anatomy::human::{ArticPatch, BodyMix, N_ARTIC};
 use chimera::control::score::{Gesture, Label, N_CONTROL, Targets};
 use chimera::engine::{Engine, MAX_SCHEDULE};
 use chimera::phonetics::beatbox::BeatStep;
-use chimera::voice::human_voice::{SourcePatch, VoiceTelemetry};
+use chimera::voice::human_voice::{SourcePatch, TELE_LABELS, VoiceTelemetry};
 
 pub const GESTURE_RECORD: usize = 272;
 pub const STEP_RECORD: usize = 48;
@@ -144,7 +144,7 @@ pub extern "C" fn engine_new(sample_rate: f64) -> *mut Handle {
         values: vec![f64::NAN; 32],
         tele: VoiceTelemetry::default(),
         tele_block: Vec::with_capacity(TELE_HEADER + 1024),
-        tele_labels: vec![0u8; 4 * 25],
+        tele_labels: vec![0u8; TELE_LABELS],
         ctele: None,
         ctele_block: Vec::new(),
     });
@@ -352,11 +352,7 @@ pub extern "C" fn chimera_probe(f: u32, x: f64, y: f64) -> f64 {
     }
 }
 
-/// Scalars at the head of the telemetry block, in order: phLen, orLen, velumPort, f0, voicing,
-/// pLung, outRms, noiseLevel, noiseNode, gate, clock, then the array lengths nArtic, nPh, nOr,
-/// nScope, nActive. The arrays follow: artic, phAreas, orAreas, pressureRms (nPh+nOr),
-/// flow (nPh+nOr), glottalArea (nScope), glottalFlow (nScope).
-pub const TELE_HEADER: usize = 16;
+pub use chimera::voice::human_voice::TELE_HEADER;
 
 /// Take a human-voice telemetry snapshot (resets its interval measurements: RMS levels) into the
 /// flat f64 block whose address it returns; active gesture labels go to `engine_tele_labels`.
@@ -367,23 +363,8 @@ pub const TELE_HEADER: usize = 16;
 pub unsafe extern "C" fn engine_telemetry(h: *mut Handle) -> *const f64 {
     let h = handle!(h);
     h.engine.telemetry(&mut h.tele);
-    let t = &h.tele;
-    let b = &mut h.tele_block;
-    b.clear();
-    let n_ph = t.ph_areas.len();
-    let n_or = t.or_areas.len();
-    b.extend_from_slice(&[t.ph_len, t.or_len, t.velum_port, t.f0, t.voicing, t.p_lung, t.out_rms, t.noise_level, t.noise_node as f64, t.gate, t.clock]);
-    b.extend_from_slice(&[t.artic.len() as f64, n_ph as f64, n_or as f64, t.glottal_area.len() as f64, t.active.len() as f64]);
-    debug_assert_eq!(b.len(), TELE_HEADER);
-    for arr in [&t.artic, &t.ph_areas, &t.or_areas, &t.pressure_rms, &t.flow, &t.glottal_area, &t.glottal_flow] {
-        b.extend(arr.iter().map(|x| *x as f64));
-    }
-    for (i, l) in t.active.iter().enumerate() {
-        let bytes = l.as_bytes();
-        h.tele_labels[i * 25] = bytes.len() as u8;
-        h.tele_labels[i * 25 + 1..i * 25 + 1 + bytes.len()].copy_from_slice(bytes);
-    }
-    b.as_ptr()
+    h.tele.write_flat(&mut h.tele_block, &mut h.tele_labels);
+    h.tele_block.as_ptr()
 }
 
 /// The active-label area of the last telemetry snapshot: up to 4 × (length byte, 24 bytes).

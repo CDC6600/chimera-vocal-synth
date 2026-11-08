@@ -98,8 +98,9 @@ port can be reviewed file against file. `chimera::engine::Engine` is the old pro
   `js_round`, which rounds halves up. The PRNG uses explicit wrapping `u32` arithmetic.
 - **Precision.** State and gesture values are `f64` throughout; only output and telemetry are
   `f32`, as the TS `Float32Array`s were.
-- **No FTZ/DAZ.** Hosts must not enable flush-to-zero or denormals-are-zero, because those
-  change the samples. The engine already flushes silent state itself.
+- **No FTZ/DAZ where identity with the browser matters.** Flush-to-zero and denormals-are-zero
+  change the samples, and the engine already flushes silent state itself. The plugin gives this up:
+  nih-plug forces flush-to-zero, and a plugin has no browser to match (`docs/plugin.md`).
 
 ## Port fidelity
 

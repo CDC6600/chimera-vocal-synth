@@ -3,6 +3,7 @@
 use chimera::anatomy::human::BodyMix;
 use chimera::control::singer::{Singer, syllables_from};
 use chimera::engine::Engine;
+use chimera::phonetics::{Segment, Syllable};
 use chimera::phonetics::english::EnglishG2P;
 use chimera::phonetics::sing::{NoteOnOptions, plan_note_on};
 use chimera::phonetics::syllables::lyrics_to_syllables;
@@ -90,6 +91,28 @@ fn the_singer_does_not_allocate() {
         let after = counts();
         assert_eq!(after, before, "(allocations, frees) while singing with body {body:?}");
     }
+}
+
+/// The longest syllable a live note can plan, legato from another: the planner's lists stay inline.
+#[test]
+fn the_longest_syllable_does_not_allocate() {
+    let seg = |ipa: &str| Segment::new(ipa);
+    let cluster: Vec<Segment> = ["s", "p", "ɹ", "t", "k", "l", "m", "f", "θ"].iter().map(|i| seg(i)).collect(); // one past the cap
+    let syl = Syllable { text: "x".into(), onset: cluster.clone(), nucleus: seg("aɪ"), coda: cluster, melisma: None, word_end: true, phrase_end: false };
+    let mut e = Engine::new(44100.0);
+    let mut s = Singer::new();
+    let _ = s.set_syllables(syllables_from(&[syl.clone(), syl]));
+    let mut buf = vec![0.0f32; 512];
+    e.render(&mut buf);
+    let before = counts();
+    s.note_on(&mut e, 57, 96.0);
+    e.render(&mut buf);
+    s.note_on(&mut e, 59, 96.0); // legato: the previous glide and coda, this onset, this vowel
+    e.render(&mut buf);
+    s.note_off(&mut e, 57);
+    s.note_off(&mut e, 59);
+    e.render(&mut buf);
+    assert_eq!(counts(), before);
 }
 
 /// The counter works: the same planning through the browser's `Vec` API is seen allocating.
