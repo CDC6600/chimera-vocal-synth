@@ -281,7 +281,8 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
             // The delay leaves the closure 30 ms before its release (its 10 ms minimum hold and
             // its ~20 ms early release), so a short sung stop isn't pushed past its own end.
             Manner::Stop if pre_placed_behind_closure(&segs, i) => add_oral(&def.targets, t0 + js_min(PLACED_CLOSURE_DELAY, js_max(0.0, dur - 0.03)), t1, 1.55, def.ipa),
-            Manner::Stop | Manner::Nasal => add_oral(&def.targets, t0, t1, 1.55, def.ipa),
+            Manner::Stop => add_oral(&def.targets, t0, t1, 1.55, def.ipa),
+            Manner::Nasal => add_oral(&def.targets, t0 + js_min(nasal_closure_delay(def.place), js_max(0.0, dur - 0.03)), t1, 1.55, def.ipa),
             Manner::Tap => add_oral(&def.targets, t0, t1, 2.8, def.ipa),
             Manner::Trill => {
                 // driven trill: rapid alternation of near-closure and release at ~26 Hz
@@ -306,8 +307,10 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
             Manner::Fricative | Manner::Approximant | Manner::Lateral => add_oral(&def.targets, t0, t1, 1.3, def.ipa),
             Manner::Glottal | Manner::Vowel => {}
         }
-        // nasality: the velum lowers in anticipation (into the preceding vowel, as in English) and
-        // seals again by the end of the nasal; 0.45 cm² is ample for the murmur
+        // nasality: the velum lowers in anticipation (into the preceding vowel, as in English). The
+        // port opens about 37 ms before the span and seals about 29 ms after it, as its lag isn't
+        // compensated. The speakers' /nd/ holds its murmur at least that late, and sealing at the
+        // span's end breaks level /d/ (hill-climb log, experiment 25). 0.45 cm² is ample for the murmur
         if def.nasal == Some(true) {
             gestures.push(Gesture::new(t0 - 0.02, t1 - 0.02, 0.05, 0.03, 4.0, one(ArticKey::Velum, 0.45)).label("velum"));
         }
@@ -424,6 +427,20 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
 /// /tʃ/: about 55 ms of closure, 60-65 ms of frication and a fading tail).
 const AFFRICATE_CLOSURE: f64 = 0.45;
 
+/// How much later a nasal's closure is aimed than its span's start (s). `oral_gestures_into` brings
+/// contact to about its `a` (a median 0-9 ms early in running speech), but a nasal is heard from when
+/// the oral area falls under about 0.05 cm², when the sound has already left for the nose, and that
+/// is where MFA starts it on a render: a median 7-13 ms before the span at the lips, 14-18 at the
+/// tip, 19-20 at the dorsum. Klatt's durations are acoustic, so a span starts where it sounds closed
+/// (hill-climb log, experiment 25). A short sung nasal keeps the 30 ms a stop's delay leaves.
+fn nasal_closure_delay(place: &str) -> f64 {
+    match place {
+        "bilabial" | "labiodental" => 0.01,
+        "velar" | "uvular" | "palatal" => 0.02,
+        _ => 0.015,
+    }
+}
+
 /// Front-to-back order of the oral places of articulation.
 fn place_rank(place: &str) -> Option<u8> {
     Some(match place {
@@ -473,7 +490,8 @@ fn pitch_ramp(dur: f64) -> f64 {
 
 /// Oral gestures for one consonant constriction held acoustically from `a` to `b` (closure to
 /// release): a dominant gesture on the consonant's own articulators and a weak one on the rest.
-/// Movement latencies are compensated so the acoustic closure and release land on a and b.
+/// Movement latencies are compensated so that contact and the acoustic release land about on a and
+/// b. The closure is heard earlier than contact: see `nasal_closure_delay`.
 pub fn oral_gestures(def: &PhonemeDef, tg: &ArticPatch, a: f64, b: f64, speed: f64, label: &str) -> Vec<Gesture> {
     let mut out = Vec::with_capacity(4);
     oral_gestures_into(def, tg, a, b, speed, label, &mut out);
