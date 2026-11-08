@@ -4,8 +4,9 @@ use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
 use chimera::engine::Engine;
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::SourcePatch;
-use chimera_plugin::core::{Core, Event, Mode, Settings, Shared, Transport, UiNote, VoiceParams};
+use chimera_plugin::core::{Core, Event, Mode, Prepared, Settings, Shared, Transport, UiNote, VoiceParams};
 use chimera_plugin::g2p;
+use chimera_plugin::speech::{SpeechSettings, plan_lines, plan_pad};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
@@ -44,7 +45,8 @@ fn the_audio_threads_path_does_not_allocate() {
     let settings = Settings::default();
     // the largest airway is the default male's; start small to check the swap up to it
     let settings = Settings { body: BodyMix::CHILD, ..settings };
-    let mut c = Core::new(44100.0, &settings, &lyrics_to_syllables(&settings.lyrics, g2p()), params(), &shared);
+    let prepared = Prepared::of(&settings, &shared);
+    let mut c = Core::new(44100.0, &settings, &prepared, params(), &shared);
     let mut buf = vec![0.0f32; 512];
     let block = |c: &mut Core, p: &VoiceParams, t: Transport, buf: &mut [f32], evs: &[Event]| {
         c.begin_block(p, t, &shared);
@@ -62,6 +64,13 @@ fn the_audio_threads_path_does_not_allocate() {
     let lyrics: Vec<_> = ["Strengths high - - hour", "sixths"].iter().map(|l| lyrics_to_syllables(l, g2p())).collect();
     let mut voices = voices.into_iter();
     let mut lyrics = lyrics.into_iter();
+    // a long line: it has to fit what the engine reserved
+    let paragraph = "The quick brown fox jumps over the lazy dog, and the dog, who had seen it all before, did not look up. ".repeat(20);
+    let speeches: Vec<_> = ["One.\nTwo.", &paragraph].iter().map(|t| plan_lines(&SpeechSettings { text: t.to_string(), ..Default::default() }, BodyMix::MALE, g2p())).collect();
+    assert!(speeches[1][0].plan.gestures.len() > 1000, "{} gestures", speeches[1][0].plan.gestures.len());
+    let mut speeches = speeches.into_iter();
+    let pads: Vec<_> = (0..5).map(|_| plan_pad("ˈɑpɑ", BodyMix::MALE, 1.0)).collect();
+    let mut pads = pads.into_iter();
 
     let mut total = (0usize, 0usize);
     let mut measured = |c: &mut Core, p: &VoiceParams, t: Transport, buf: &mut [f32], evs: &[Event]| {
@@ -112,6 +121,26 @@ fn the_audio_threads_path_does_not_allocate() {
         });
         measured(&mut c, &params(), t, &mut buf, &[Event::NoteOn { midi: 57, velocity: 96.0 }]);
         measured(&mut c, &params(), t, &mut buf, &[Event::NoteOff { midi: 57 }]);
+        // Speak: a note, the buttons, new plans, the chart, a long line
+        shared.edit(|p| p.mode = Some(Mode::Speak));
+        measured(&mut c, &params(), t, &mut buf, &[Event::NoteOn { midi: 64, velocity: 96.0 }]);
+        measured(&mut c, &params(), t, &mut buf, &[Event::NoteOff { midi: 64 }, Event::NoteOn { midi: 40, velocity: 96.0 }, Event::Bend(0.3)]);
+        shared.edit(|p| {
+            p.speak_next = true;
+            p.speech_cursor = Some(0);
+        });
+        measured(&mut c, &params(), t, &mut buf, &[]);
+        shared.edit(|p| p.stop_speech = true);
+        measured(&mut c, &params(), t, &mut buf, &[]);
+        if let Some(lines) = speeches.next() {
+            shared.send_speech(lines, true);
+        }
+        measured(&mut c, &params(), t, &mut buf, &[Event::NoteOn { midi: 60, velocity: 96.0 }]);
+        measured(&mut c, &params(), t, &mut buf, &[]);
+        if let Some(pad) = pads.next() {
+            shared.send_pad(pad);
+        }
+        measured(&mut c, &params(), t, &mut buf, &[]);
         shared.edit(|p| p.mode = Some(Mode::Sing));
         measured(&mut c, &params(), t, &mut buf, &[]);
         // the transport: a stop, a start, a loop

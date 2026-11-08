@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store.ts";
-import { speakText, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow } from "../speech.ts";
+import { speakText, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow, useSpeech } from "../speech.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { tokenizeIpa } from "../../wasm/engine.ts";
 import { Slider, Toggle } from "./Controls.tsx";
@@ -11,6 +11,7 @@ import { Stroboscope } from "./Stroboscope.tsx";
 import type { InfoFn, SlotsFn } from "./AnatomyView.tsx";
 import { V } from "../colors.ts";
 import { engine } from "../../audio/AudioEngine.ts";
+import { inPlugin } from "../../audio/pluginBridge.ts";
 
 const EXAMPLES = ["Hello. Can you hear me?", "She sells sea shells by the sea shore.", "Every sound here is air moving through a throat.", "The quick brown fox jumps over the lazy dog."];
 
@@ -112,20 +113,39 @@ function ConsonantChart(props: { onPad: (c: string) => void }) {
   );
 }
 
+/** In the plugin: the lines a note says, with the next one marked. */
+function Lines() {
+  const lines = useSpeech((s) => s.lines);
+  const cursor = useSpeech((s) => s.cursor);
+  const setCursor = useSpeech((s) => s.setCursor);
+  return (
+    <div className="syllables say-lines" role="group" aria-label="Lines. Each note says the marked one; choose another to start there.">
+      {lines.map((l, i) => (
+        <button key={i} className={`syl say-line${i === cursor ? " next" : ""}`} onClick={() => setCursor(i)} aria-current={i === cursor ? "step" : undefined} title={`Say from “${l}”`}>
+          {l}
+        </button>
+      ))}
+      {!lines.length && <span className="dim">No words: the notes say nothing.</span>}
+      <Chip toggle={false} className="from-start" onClick={() => setCursor(0)} disabled={cursor === 0}>
+        From the start
+      </Chip>
+    </div>
+  );
+}
+
 /** Speak mode's right column: what to say, the gestural score, the consonant chart, the tube and folds. */
 export function SpeakRight() {
   const body = useStore((s) => s.body);
   const f0 = useStore((s) => s.source.f0);
   const start = useStore((s) => s.start);
-  const [text, setText] = useState(EXAMPLES[0]);
-  const [ipa, setIpa] = useState(false);
-  const [rate, setRate] = useState(1);
+  const { text, ipa, rate, edit } = useSpeech();
   const [busy, setBusy] = useState(false);
   const [trans, setTrans] = useState(currentPlan()?.transcription ?? "");
   const [vowel, setVowel] = useState("ɑ");
   useEffect(() => onPlan((p) => setTrans(p?.transcription ?? "")), []);
 
   const speak = async () => {
+    if (inPlugin) return engine.pluginSpeak();
     setBusy(true);
     try {
       await start();
@@ -135,18 +155,19 @@ export function SpeakRight() {
     }
   };
   const pad = async (c: string) => {
+    if (inPlugin) return engine.pluginSayIpa(`ˈ${vowel}${c}${vowel}`);
     await start();
     speakPhrases([{ segments: tokenizeIpa(`ˈ${vowel}${c}${vowel}`), intonation: "flat" }], { body, rate, f0 });
   };
 
   return (
     <div className="right right-speak">
-      <Screen className="s-say" title="Say" sub="Text to speech" tools={<Toggle label="Text is IPA" checked={ipa} onChange={setIpa} />}>
-        <div className="say">
+      <Screen className="s-say" title="Say" sub={inPlugin ? "Each note says the next line" : "Text to speech"} tools={<Toggle label="Text is IPA" checked={ipa} onChange={(v) => edit({ ipa: v })} />}>
+        <div className={`say${inPlugin ? " say-lined" : ""}`}>
           <div className="say-row">
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => edit({ text: e.target.value })}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void speak();
                 e.stopPropagation();
@@ -154,7 +175,7 @@ export function SpeakRight() {
               rows={2}
               spellCheck={!ipa}
               aria-label={ipa ? "IPA to speak" : "Text to speak"}
-              placeholder={ipa ? "Type IPA, for example ˈhɛloʊ" : "Type something for the voice to say"}
+              placeholder={ipa ? "Type IPA, for example ˈhɛloʊ" : inPlugin ? "One line per note" : "Type something for the voice to say"}
             />
             <div className="say-actions">
               <button className="primary" onClick={() => void speak()} disabled={busy}>
@@ -170,23 +191,20 @@ export function SpeakRight() {
               {trans ? `/${trans}/` : "The transcription appears here."}
             </p>
             <div className="say-rate">
-              <Slider label="Rate" value={rate} min={0.5} max={1.8} onChange={setRate} format={(v) => `${v.toFixed(2)}×`} />
+              <Slider label="Rate" value={rate} min={0.5} max={1.8} onChange={(v) => edit({ rate: v })} format={(v) => `${v.toFixed(2)}×`} />
             </div>
           </div>
-          <div className="examples" role="group" aria-label="Examples">
-            {EXAMPLES.map((ex) => (
-              <Chip
-                key={ex}
-                toggle={false}
-                onClick={() => {
-                  setText(ex);
-                  setIpa(false);
-                }}
-              >
-                {ex}
-              </Chip>
-            ))}
-          </div>
+          {inPlugin ? (
+            <Lines />
+          ) : (
+            <div className="examples" role="group" aria-label="Examples">
+              {EXAMPLES.map((ex) => (
+                <Chip key={ex} toggle={false} onClick={() => edit({ text: ex, ipa: false })}>
+                  {ex}
+                </Chip>
+              ))}
+            </div>
+          )}
         </div>
       </Screen>
       <Screen className="s-score" title="Gestural score">

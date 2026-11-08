@@ -2877,3 +2877,28 @@ input[type="range"]::-moz-range-thumb {
 .resize-grip svg {
   display: block;
 }
+
+/* ---------- the plugin's spoken lines: one chip per line, cut short if it's long */
+.say-lined {
+  gap: 4px;
+}
+.say-lines {
+  min-height: 26px;
+  max-height: 26px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.say-lines::-webkit-scrollbar {
+  display: none;
+}
+.say-lines > * {
+  flex: none;
+}
+.say-line {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

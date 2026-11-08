@@ -8,11 +8,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera_plugin::ChimeraParams;
 use chimera_plugin::bridge::{Bridge, GripAction, ParamHost};
-use chimera_plugin::core::{Core, Event, Settings, Shared, Transport, VoiceParams};
-use chimera_plugin::{g2p, rebuild};
+use chimera_plugin::core::{Event, Settings, Shared, Transport, VoiceParams};
+use chimera_plugin::rebuild;
 use nih_plug::prelude::Params;
 
 /// Stands in for a host: parameter values, kept here, and a log the test can read.
@@ -61,11 +60,7 @@ fn main() {
     let host = FakeHost { values: values.clone(), log: log.clone() };
     let initial = values.lock().unwrap().clone();
 
-    let settings = Settings::default();
-    let syllables = lyrics_to_syllables(&settings.lyrics, g2p());
-    shared.restart(fs);
-    *shared.syllables.lock().unwrap() = syllables.clone();
-    let mut core = Core::new(fs, &settings, &syllables, voice_params(&initial), &shared);
+    let mut core = rebuild(&params, &shared, voice_params(&initial), fs).expect("a rate the engine runs at");
     let bridge = Arc::new(Bridge::new(params.clone(), shared.clone(), Box::new(host)));
     // a project the test restores, for the audio thread to come back from as `initialize` does
     let restore: Arc<Mutex<Option<Settings>>> = Arc::new(Mutex::new(None));

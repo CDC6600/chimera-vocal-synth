@@ -3,8 +3,9 @@ use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
 use chimera::engine::Engine;
 use chimera::phonetics::Syllable;
 use chimera::phonetics::syllables::lyrics_to_syllables;
-use chimera_plugin::core::{Core, DEFAULT_LYRICS, Event, Mode, Settings, Shared, Transport, UiNote, VoiceParams};
+use chimera_plugin::core::{Core, DEFAULT_LYRICS, Event, Mode, NOT_SPEAKING, Prepared, SAYING_PAD, Settings, Shared, Transport, UiNote, VoiceParams};
 use chimera_plugin::g2p;
+use chimera_plugin::speech::{SpeechSettings, plan_lines, plan_pad};
 use std::sync::atomic::Ordering;
 
 const FS: f64 = 44100.0;
@@ -18,9 +19,10 @@ fn syllables(text: &str) -> Vec<Syllable> {
 }
 
 fn core_with(settings: &Settings, shared: &Shared) -> Core {
+    let prepared = Prepared::of(settings, shared);
     shared.restart(FS);
-    let c = Core::new(FS, settings, &syllables(&settings.lyrics), params(), shared);
-    *shared.syllables.lock().unwrap() = syllables(&settings.lyrics);
+    let c = Core::new(FS, settings, &prepared, params(), shared);
+    shared.adopt(prepared);
     c
 }
 
@@ -504,4 +506,207 @@ fn an_edit_during_a_rebuild_reaches_the_rebuilt_core() {
     activating.join().unwrap();
     let sung = shared.syllables.lock().unwrap();
     assert_eq!(sung.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(), ["no"], "the rebuilt instrument has the edit");
+}
+
+// ---------------------------------------------------------------- Speak
+
+fn speaking(text: &str, shared: &Shared) -> Core {
+    let settings = Settings { mode: Mode::Speak, speech: SpeechSettings { text: text.to_string(), ..Default::default() }, ..Default::default() };
+    core_with(&settings, shared)
+}
+
+fn spoken(shared: &Shared) -> i32 {
+    shared.spoken_line.load(Ordering::Relaxed)
+}
+
+#[test]
+fn each_note_says_the_next_line_and_goes_round() {
+    let shared = Shared::default();
+    let mut c = speaking("Hello there.\n\n  One more line.  \nThe last.", &shared);
+    assert_eq!(shared.speech.lock().unwrap().lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["Hello there.", "One more line.", "The last."], "blank lines say nothing");
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), NOT_SPEAKING, "nothing said yet");
+    for expect in [0, 1, 2, 0] {
+        let serial = shared.spoken_serial.load(Ordering::Relaxed);
+        let out = run(&mut c, &shared, &[(0, on(60)), (2000, off(60))], (FS * 0.5) as usize, |_| 256);
+        assert_eq!(spoken(&shared), expect);
+        assert_ne!(shared.spoken_serial.load(Ordering::Relaxed), serial, "the page can tell a new line started");
+        assert!(peak(&out) > 0.001, "line {expect} sounds: {}", peak(&out));
+        assert!(c.engine().score().size() > 0, "the note's release doesn't end the line");
+    }
+}
+
+#[test]
+fn a_new_note_cuts_the_line_sounding() {
+    let shared = Shared::default();
+    let mut c = speaking("The quick brown fox jumps over the lazy dog.\nNo.", &shared);
+    run(&mut c, &shared, &[(0, on(60))], 2048, |_| 256);
+    let long = c.engine().score().size();
+    run(&mut c, &shared, &[(0, on(62))], 2048, |_| 256);
+    assert!(c.engine().score().size() < long, "only the short line is left");
+    assert_eq!(spoken(&shared), 1);
+}
+
+#[test]
+fn the_key_transposes_like_a_sampler() {
+    let shared = Shared::default();
+    let mut c = speaking("Hello.", &shared);
+    let bend = |c: &Core| c.engine().voice().bend;
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(bend(&c), 1.0, "C4 speaks at the natural pitch");
+    run(&mut c, &shared, &[(0, on(72))], 256, |_| 256);
+    assert!((bend(&c) - 2.0).abs() < 1e-9, "an octave up: {}", bend(&c));
+    run(&mut c, &shared, &[(0, Event::Bend(0.75))], 256, |_| 256);
+    assert!((bend(&c) - 2.0 * 2f64.powf(2.0 / 24.0 * 2.0 / 2.0)).abs() < 1e-3, "the wheel moves it further: {}", bend(&c));
+    // far keys stay within two octaves, and the voice stays well behaved there
+    for midi in [0, 127] {
+        let out = run(&mut c, &shared, &[(0, on(midi))], (FS * 0.6) as usize, |_| 256);
+        assert!(out.iter().all(|x| x.is_finite() && x.abs() < 4.0), "key {midi} peaks at {}", peak(&out));
+    }
+    run(&mut c, &shared, &[(0, Event::Bend(0.5))], 256, |_| 256);
+    assert!((bend(&c) - 4.0).abs() < 1e-9, "at most two octaves: {}", bend(&c));
+}
+
+#[test]
+fn the_transport_brings_the_lines_back_and_a_stop_stops_them() {
+    let shared = Shared::default();
+    let mut c = speaking("One.\nTwo.\nThree.", &shared);
+    let block = |c: &mut Core, t: Transport, evs: &[Event]| {
+        c.begin_block(&params(), t, &shared);
+        for e in evs {
+            c.event(*e);
+        }
+        c.render(&mut [0.0; 256]);
+        c.end_block(256, &shared);
+    };
+    let at = |p: f64| Transport { playing: true, position: Some(p), ..Default::default() };
+    // pick the second line while stopped: that's where playing starts
+    shared.edit(|p| p.speech_cursor = Some(1));
+    block(&mut c, Transport::default(), &[]);
+    assert_eq!(c.speech_cursor(), 1);
+    block(&mut c, at(0.0), &[on(60)]);
+    assert_eq!(spoken(&shared), 1);
+    block(&mut c, at(0.1), &[on(60)]);
+    assert_eq!(spoken(&shared), 2);
+    // a loop
+    block(&mut c, at(0.0), &[]);
+    assert_eq!(c.speech_cursor(), 1, "back to the start line");
+    block(&mut c, at(0.1), &[on(60)]);
+    assert!(c.engine().score().size() > 0);
+    block(&mut c, Transport::default(), &[]);
+    assert_eq!(spoken(&shared), NOT_SPEAKING);
+    assert_eq!(c.engine().score().size(), 0, "a stop stops the speech");
+}
+
+#[test]
+fn new_plans_keep_the_place_unless_the_words_changed() {
+    let shared = Shared::default();
+    let mut c = speaking("One.\nTwo.\nThree.", &shared);
+    let speech = |text: &str| SpeechSettings { text: text.to_string(), ..Default::default() };
+    run(&mut c, &shared, &[(0, on(60)), (10, on(61))], 256, |_| 256);
+    assert_eq!(c.speech_cursor(), 2);
+    let before = shared.spoken_generation.load(Ordering::Relaxed);
+    assert_eq!(before, shared.speech.lock().unwrap().lines_generation, "what's said is from these plans");
+    // a new rate, or a new body: the same words
+    shared.send_speech(plan_lines(&SpeechSettings { rate: 1.5, ..speech("One.\nTwo.\nThree.") }, BodyMix::MALE, g2p()), false);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.speech_cursor(), 2);
+    assert_ne!(shared.speech.lock().unwrap().lines_generation, before);
+    assert_eq!(shared.spoken_generation.load(Ordering::Relaxed), before, "and what's sounding is still the old plan: the page must not draw the new one over it");
+    // fewer lines: the place is kept in range
+    shared.send_speech(plan_lines(&speech("One.\nTwo."), BodyMix::MALE, g2p()), false);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.speech_cursor(), 1);
+    // new words
+    shared.send_speech(plan_lines(&speech("Other words.\nAnd more."), BodyMix::MALE, g2p()), true);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(c.speech_cursor(), 0);
+    // no words at all: a note does nothing
+    shared.send_speech(plan_lines(&speech("  \n "), BodyMix::MALE, g2p()), true);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    let serial = shared.spoken_serial.load(Ordering::Relaxed);
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(shared.spoken_serial.load(Ordering::Relaxed), serial, "no line to say");
+}
+
+#[test]
+fn the_speak_button_the_stop_button_and_the_chart() {
+    let shared = Shared::default();
+    let mut c = speaking("One.\nTwo.", &shared);
+    shared.edit(|p| p.speak_next = true);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), 0);
+    assert_eq!(c.engine().voice().bend, 1.0);
+    shared.edit(|p| p.stop_speech = true);
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), NOT_SPEAKING);
+    assert_eq!(c.speech_cursor(), 1, "stop keeps the place");
+    shared.send_pad(plan_pad("ˈɑpɑ", BodyMix::MALE, 1.0));
+    let out = run(&mut c, &shared, &[], (FS * 0.3) as usize, |_| 256);
+    assert_eq!(spoken(&shared), SAYING_PAD);
+    assert_eq!(shared.spoken_generation.load(Ordering::Relaxed), shared.speech.lock().unwrap().pad_generation);
+    assert!(peak(&out) > 0.001);
+    assert_eq!(c.speech_cursor(), 1, "a pad isn't a line");
+    // in another mode none of these does anything
+    shared.edit(|p| p.mode = Some(Mode::Sing));
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), NOT_SPEAKING);
+    shared.edit(|p| p.speak_next = true);
+    shared.send_pad(plan_pad("ˈɑpɑ", BodyMix::MALE, 1.0));
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), NOT_SPEAKING);
+}
+
+#[test]
+fn a_new_body_stops_the_line_and_replans_for_its_airway() {
+    use chimera_plugin::bridge::{Bridge, ParamHost};
+    use chimera_plugin::ChimeraParams;
+    use std::sync::Arc;
+    struct Host;
+    impl ParamHost for Host {
+        fn begin(&self, _: &str) {}
+        fn set(&self, _: &str, _: f32) {}
+        fn end(&self, _: &str) {}
+        fn values(&self) -> Vec<(String, f32)> {
+            Vec::new()
+        }
+    }
+    let params = Arc::new(ChimeraParams::default());
+    let shared = Arc::new(Shared::default());
+    let bridge = Bridge::new(params.clone(), shared.clone(), Box::new(Host));
+    let mut c = chimera_plugin::rebuild(&params, &shared, params.voice(), FS).unwrap();
+    let rev = shared.revision.load(Ordering::Relaxed);
+    let send = |json: String| bridge.command(&json.replacen('{', &format!("{{\"rev\":{rev},"), 1));
+    send(r#"{"type":"mode","mode":"speak"}"#.to_string());
+    send(r#"{"type":"speech","text":"Hello there.\nGoodbye."}"#.to_string());
+    run(&mut c, &shared, &[(0, on(60))], 256, |_| 256);
+    assert_eq!(spoken(&shared), 0);
+    let male = shared.speech.lock().unwrap().lines[0].plan.gestures.clone();
+    send(r#"{"type":"body","body":{"female":1,"child":0}}"#.to_string());
+    run(&mut c, &shared, &[], 256, |_| 256);
+    assert_eq!(spoken(&shared), NOT_SPEAKING, "the new voice has no score");
+    assert_eq!(c.speech_cursor(), 1, "and the place is kept");
+    assert_ne!(shared.speech.lock().unwrap().lines[0].plan.gestures, male, "a line is planned for its airway");
+    // what the page reads
+    let reply = bridge.request("/speech/1");
+    assert_eq!(reply.status, 200);
+    let v: serde_json::Value = serde_json::from_slice(&reply.body).unwrap();
+    assert_eq!(v["generation"], shared.speech.lock().unwrap().lines_generation);
+    assert!(v["plan"]["gestures"].as_array().is_some_and(|g| !g.is_empty()) && v["phrases"][0]["words"][0] == "goodbye", "{v}");
+    assert_eq!(bridge.request("/speech/9").status, 404);
+    assert_eq!(bridge.request("/speech/pad").status, 404, "no pad yet");
+    send(r#"{"type":"sayIpa","ipa":"ˈɑtɑ"}"#.to_string());
+    assert_eq!(bridge.request("/speech/pad").status, 200);
+}
+
+/// Saved projects from before Speak still load, and their Speak settings survive a round trip.
+#[test]
+fn settings_from_before_speak_still_load() {
+    let old = r#"{"version":1,"lyrics":"la","body":{"female":1,"child":0},"mode":"play","artic":{},"tipFree":false,"voiced":true,"f0":200,"startSyllable":2}"#;
+    let s: Settings = serde_json::from_str(old).unwrap();
+    assert_eq!((s.lyrics.as_str(), s.mode, s.start_syllable), ("la", Mode::Play, 2));
+    assert_eq!(s.speech, SpeechSettings::default());
+    let edited = Settings { mode: Mode::Speak, speech: SpeechSettings { text: "Two\nlines".into(), ipa: true, rate: 1.5, start_line: 1 }, ..s };
+    let back: Settings = serde_json::from_str(&serde_json::to_string(&edited).unwrap()).unwrap();
+    assert_eq!(back, edited);
 }

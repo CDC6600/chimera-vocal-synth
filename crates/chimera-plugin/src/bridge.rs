@@ -16,6 +16,7 @@ use nih_plug::prelude::{GuiContext, Params};
 use serde::Deserialize;
 
 use crate::core::{MIN_SAMPLE_RATE, Mode, Shared, UiNote};
+use crate::speech::{plan_lines, plan_pad};
 use crate::{ChimeraParams, g2p};
 
 include!(concat!(env!("OUT_DIR"), "/assets.rs"));
@@ -24,9 +25,10 @@ const NOT_BUILT: &str = "<!doctype html><body style='background:#000;color:#fff;
 
 /// Scalars at the head of a `/poll` response (f64, little-endian), in order: revision,
 /// syllablesVersion, cursor, sung, note, noteSerial, busyNs, audioNs, loadPeak, faulted, playing, the
-/// telemetry's female, child, and the number of telemetry values. Those follow (see `TELE_HEADER`),
-/// then the `TELE_LABELS` bytes of active labels. Keep in step with `src/ui/pluginState.ts`.
-pub const POLL_HEADER: usize = 14;
+/// telemetry's female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, linesGeneration,
+/// speechCursor, and the number of telemetry values. Those follow (see `TELE_HEADER`), then the
+/// `TELE_LABELS` bytes of active labels. Keep in step with `src/ui/pluginState.ts`.
+pub const POLL_HEADER: usize = 20;
 
 /// The editor window's first size, and the limits of its grip (points).
 pub const WINDOW_DEFAULT: (u32, u32) = (1280, 800);
@@ -131,6 +133,13 @@ enum Command {
     Param { id: String, value: f32 },
     ParamEnd { id: String },
     Grip { action: GripAction },
+    Speech { text: Option<String>, ipa: Option<bool>, rate: Option<f64> },
+    SpeechCursor { index: usize },
+    /// say the next line
+    Speak,
+    StopSpeech,
+    /// say this once (the consonant chart)
+    SayIpa { ipa: String },
 }
 
 /// A response to a request.
@@ -167,7 +176,25 @@ impl Bridge {
             "/state" => self.state(),
             "/params" => Reply::json(&self.param_values()),
             "/syllables" => Reply::json(&*self.shared.syllables.lock().unwrap_or_else(|e| e.into_inner())),
+            "/speech" => Reply::json(&self.speech_lines()),
+            _ if path.starts_with("/speech/") => self.spoken(&path["/speech/".len()..]),
             _ => Self::asset(path),
+        }
+    }
+
+    /// The lines' texts, and the generation of their plans.
+    fn speech_lines(&self) -> serde_json::Value {
+        let doc = self.shared.speech.lock().unwrap_or_else(|e| e.into_inner());
+        serde_json::json!({ "generation": doc.lines_generation, "lines": doc.lines.iter().map(|l| &l.text).collect::<Vec<_>>() })
+    }
+
+    /// One plan (a line's number, or `pad`), and its generation, to compare with what's sounding.
+    fn spoken(&self, which: &str) -> Reply {
+        let doc = self.shared.speech.lock().unwrap_or_else(|e| e.into_inner());
+        let (line, generation) = if which == "pad" { (doc.pad.as_ref(), doc.pad_generation) } else { (which.parse::<usize>().ok().and_then(|i| doc.lines.get(i)), doc.lines_generation) };
+        match line {
+            Some(l) => Reply::json(&serde_json::json!({ "generation": generation, "phrases": l.phrases, "plan": l.plan })),
+            None => Reply { status: 404, mime: "text/plain; charset=utf-8", body: Cow::Borrowed(b"no such plan") },
         }
     }
 
@@ -197,6 +224,8 @@ impl Bridge {
             "params": self.param_values(),
             "syllables": *s.syllables.lock().unwrap_or_else(|e| e.into_inner()),
             "cursor": s.cursor.load(Ordering::Relaxed),
+            "speech": self.speech_lines(),
+            "speechCursor": s.speech_cursor.load(Ordering::Relaxed),
             "sampleRate": s.sample_rate(),
         }))
     }
@@ -205,6 +234,7 @@ impl Bridge {
         self.host.tick();
         let s = &self.shared;
         s.watch();
+        let lines_generation = s.speech.lock().unwrap_or_else(|e| e.into_inner()).lines_generation;
         let mut frame = s.telemetry.lock().unwrap_or_else(|e| e.into_inner());
         let n = if frame.fresh { frame.block.len() } else { 0 };
         let mut out = Vec::with_capacity(8 * (POLL_HEADER + n) + TELE_LABELS);
@@ -222,6 +252,13 @@ impl Bridge {
             s.playing.load(Ordering::Relaxed) as u8 as f64,
             frame.body.female,
             frame.body.child,
+            // the serial first: the audio thread writes it last
+            s.spoken_serial.load(Ordering::Acquire) as f64,
+            s.spoken_line.load(Ordering::Relaxed) as f64,
+            s.spoken_generation.load(Ordering::Relaxed) as f64,
+            f64::from_bits(s.spoken_t0.load(Ordering::Relaxed)),
+            lines_generation as f64,
+            s.speech_cursor.load(Ordering::Relaxed) as f64,
             n as f64,
         ];
         for x in header {
@@ -306,6 +343,9 @@ impl Bridge {
                 if fs >= MIN_SAMPLE_RATE {
                     shared.send_voice(Engine::prepare_voice(fs, body), body);
                 }
+                // what a line says depends on the airway saying it
+                let speech = settings().speech.clone();
+                shared.send_speech(plan_lines(&speech, body, g2p()), false);
             }
             Command::Mode { mode } => {
                 settings().mode = mode;
@@ -339,6 +379,42 @@ impl Bridge {
                 shared.edit(|p| p.source.merge(&values));
             }
             Command::Hold { on } => shared.edit(|p| p.hold = Some(on)),
+            Command::Speech { text, ipa, rate } => {
+                // new words start from the first line; a new rate carries on where it was
+                let reset = text.is_some() || ipa.is_some();
+                let (speech, body) = {
+                    let mut s = settings();
+                    if let Some(t) = text {
+                        s.speech.text = t;
+                    }
+                    if let Some(i) = ipa {
+                        s.speech.ipa = i;
+                    }
+                    if let Some(r) = rate {
+                        s.speech.rate = r.clamp(0.25, 3.0);
+                    }
+                    if reset {
+                        s.speech.start_line = 0;
+                    }
+                    (s.speech.clone(), s.body)
+                };
+                shared.send_speech(plan_lines(&speech, body, g2p()), reset);
+            }
+            Command::SpeechCursor { index } => {
+                if !shared.playing.load(Ordering::Relaxed) {
+                    settings().speech.start_line = index;
+                }
+                shared.edit(|p| p.speech_cursor = Some(index));
+            }
+            Command::Speak => shared.edit(|p| p.speak_next = true),
+            Command::StopSpeech => shared.edit(|p| p.stop_speech = true),
+            Command::SayIpa { ipa } => {
+                let (body, rate) = {
+                    let s = settings();
+                    (s.body, s.speech.rate)
+                };
+                shared.send_pad(plan_pad(&ipa, body, rate));
+            }
             Command::Param { .. } | Command::ParamEnd { .. } | Command::Grip { .. } => {}
         }
     }

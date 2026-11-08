@@ -9,13 +9,18 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 use chimera::anatomy::human::{ArticKey, ArticPatch, BodyMix};
+use chimera::control::score::Gesture;
 use chimera::control::singer::{Singer, syllables_from};
 use chimera::engine::{Engine, SUB_BLOCK};
 use chimera::math::{midi_to_hz, pow};
 use chimera::phonetics::Syllable;
 use chimera::phonetics::sing::LiveSyllable;
+use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::{HumanVoice, SourcePatch, TELE_LABELS, VoiceTelemetry};
 use serde::{Deserialize, Serialize};
+
+use crate::g2p;
+use crate::speech::{SpeechSettings, SpokenLine, plan_lines};
 
 /// The lowest sample rate the engine is stable at (Hz): the airway gives NaN at 22.05 kHz.
 pub const MIN_SAMPLE_RATE: f64 = 32000.0;
@@ -28,6 +33,15 @@ const BEND_RANGE: f64 = 2.0;
 const TELEMETRY_RATE: f64 = 60.0;
 /// A poll keeps telemetry flowing for this long (s).
 const WATCH_TIME: f64 = 0.25;
+/// The key that speaks at the body's natural pitch, and how far a key may move it (semitones).
+const SPEECH_ROOT: f64 = 60.0;
+const SPEECH_RANGE: f64 = 24.0;
+/// A spoken line's time 0 comes this long after its note (s), as on the website.
+const SPEECH_LEAD: f64 = 0.03;
+/// [`Shared::spoken_line`]: nothing is being said.
+pub const NOT_SPEAKING: i32 = -1;
+/// [`Shared::spoken_line`]: the consonant chart's one-shot is being said.
+pub const SAYING_PAD: i32 = -2;
 
 /// What the MIDI keys do.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +52,8 @@ pub enum Mode {
     Sing,
     /// the keys set the pitch of the posture the user has set, and breathe it
     Play,
+    /// each note says the next line
+    Speak,
 }
 
 /// What a project saves besides the host parameters.
@@ -56,11 +72,12 @@ pub struct Settings {
     pub f0: f64,
     /// where the lyrics restart when the transport starts
     pub start_syllable: usize,
+    pub speech: SpeechSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { version: 1, lyrics: DEFAULT_LYRICS.to_string(), body: BodyMix::MALE, mode: Mode::Sing, artic: ArticPatch::default(), tip_free: true, voiced: true, f0: 110.0, start_syllable: 0 }
+        Settings { version: 1, lyrics: DEFAULT_LYRICS.to_string(), body: BodyMix::MALE, mode: Mode::Sing, artic: ArticPatch::default(), tip_free: true, voiced: true, f0: 110.0, start_syllable: 0, speech: SpeechSettings::default() }
     }
 }
 
@@ -118,16 +135,59 @@ pub struct Pending {
     pub hold: Option<bool>,
     pub mode: Option<Mode>,
     pub cursor: Option<usize>,
+    pub speech_cursor: Option<usize>,
+    /// say the next line (the Speak button)
+    pub speak_next: bool,
+    pub stop_speech: bool,
     voice: Option<(Box<HumanVoice>, BodyMix)>,
     syllables: Option<Vec<LiveSyllable>>,
+    speech: Option<NewSpeech>,
+    pad: Option<(Vec<Gesture>, u32)>,
     notes: Vec<UiNote>,
     /// release every key the UI holds (the window closed, or notes were dropped)
     clear_ui_keys: bool,
     /// what the audio thread replaced, for the main thread to free
     retired_voice: Option<Box<HumanVoice>>,
     retired_syllables: Option<Vec<LiveSyllable>>,
+    retired_speech: Option<Vec<Vec<Gesture>>>,
+    retired_pad: Option<Vec<Gesture>>,
     /// the rate a new voice must have (0: not active)
     sample_rate: f64,
+}
+
+/// New plans for the spoken lines.
+struct NewSpeech {
+    plans: Vec<Vec<Gesture>>,
+    generation: u32,
+    /// the text changed: back to its first line
+    reset: bool,
+}
+
+/// What's worked out from a project's text, off the audio thread.
+pub struct Prepared {
+    pub syllables: Vec<Syllable>,
+    pub speech: Vec<SpokenLine>,
+    pub generation: u32,
+}
+
+impl Prepared {
+    pub fn of(settings: &Settings, shared: &Shared) -> Prepared {
+        Prepared { syllables: lyrics_to_syllables(&settings.lyrics, g2p()), speech: plan_lines(&settings.speech, settings.body, g2p()), generation: shared.next_generation() }
+    }
+}
+
+/// The spoken lines and the last one-shot, for the editor to show. Each set of plans has a
+/// generation, so the page can tell a plan from the one really sounding.
+#[derive(Default)]
+pub struct SpeechDoc {
+    pub lines: Vec<SpokenLine>,
+    pub lines_generation: u32,
+    pub pad: Option<SpokenLine>,
+    pub pad_generation: u32,
+}
+
+fn gestures_of(lines: &[SpokenLine]) -> Vec<Vec<Gesture>> {
+    lines.iter().map(|l| l.plan.gestures.clone()).collect()
 }
 
 /// An f32 in an atomic (bit pattern).
@@ -184,6 +244,18 @@ pub struct Shared {
     pub note: AtomicI32,
     /// bumped by every press, so the editor can tell a new note from the same pitch held
     pub note_serial: AtomicU32,
+    pub speech: Mutex<SpeechDoc>,
+    generations: AtomicU32,
+    /// the line a note says next
+    pub speech_cursor: AtomicI32,
+    /// bumped whenever what's being said changes, and written last: read it first
+    pub spoken_serial: AtomicU32,
+    /// the line being said ([`NOT_SPEAKING`], [`SAYING_PAD`])
+    pub spoken_line: AtomicI32,
+    /// the generation of the plan being said
+    pub spoken_generation: AtomicU32,
+    /// the voice clock at the plan's time 0 (f64 bits)
+    pub spoken_t0: AtomicU64,
     pub playing: AtomicBool,
     /// time spent in `process` and audio time rendered since the editor last read them (ns), and
     /// the worst block (a fraction of its duration)
@@ -258,6 +330,53 @@ impl Shared {
         drop(freed);
     }
 
+    /// A number no set of speech plans has had.
+    pub fn next_generation(&self) -> u32 {
+        self.generations.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    /// New plans for the lines: for the audio thread, and for the editor to show.
+    pub fn send_speech(&self, lines: Vec<SpokenLine>, reset: bool) {
+        let generation = self.next_generation();
+        let plans = gestures_of(&lines);
+        {
+            let mut doc = self.speech.lock().unwrap_or_else(|e| e.into_inner());
+            doc.lines = lines;
+            doc.lines_generation = generation;
+        }
+        let mut p = self.lock();
+        let reset = reset || p.speech.as_ref().is_some_and(|s| s.reset);
+        let freed = (p.retired_speech.take(), p.speech.replace(NewSpeech { plans, generation, reset }));
+        self.dirty.store(true, Ordering::Release);
+        drop(p);
+        drop(freed);
+    }
+
+    /// Say this once, now, if Speak is the mode (the consonant chart).
+    pub fn send_pad(&self, line: SpokenLine) {
+        let generation = self.next_generation();
+        let gestures = line.plan.gestures.clone();
+        {
+            let mut doc = self.speech.lock().unwrap_or_else(|e| e.into_inner());
+            doc.pad = Some(line);
+            doc.pad_generation = generation;
+        }
+        let mut p = self.lock();
+        let freed = (p.retired_pad.take(), p.pad.replace((gestures, generation)));
+        self.dirty.store(true, Ordering::Release);
+        drop(p);
+        drop(freed);
+    }
+
+    /// What was prepared for a new [`Core`], for the editor to show.
+    pub fn adopt(&self, prepared: Prepared) {
+        *self.syllables.lock().unwrap_or_else(|e| e.into_inner()) = prepared.syllables;
+        self.syllables_version.fetch_add(1, Ordering::Relaxed);
+        let mut doc = self.speech.lock().unwrap_or_else(|e| e.into_inner());
+        doc.lines = prepared.speech;
+        doc.lines_generation = prepared.generation;
+    }
+
     /// Start afresh, as `initialize` does: nothing queued is for the new [`Core`].
     pub fn restart(&self, sample_rate: f64) {
         let fresh = Pending { sample_rate, notes: Vec::with_capacity(MAX_UI_NOTES), ..Default::default() };
@@ -313,6 +432,21 @@ pub struct Core {
     labels: [u8; TELE_LABELS],
     /// presses so far (see [`Shared::note_serial`])
     presses: u32,
+    /// each line's gestures, and the generation of those plans
+    speech: Vec<Vec<Gesture>>,
+    speech_generation: u32,
+    speech_cursor: usize,
+    speech_start: usize,
+    /// the last one-shot, kept until the main thread can free it
+    pad: Vec<Gesture>,
+    /// what's being said, as [`Shared`] shows it
+    spoken_serial: u32,
+    spoken_line: i32,
+    spoken_generation: u32,
+    spoken_t0: f64,
+    /// pitch ratios: from the key that said this line, and the pitch wheel
+    key_bend: f64,
+    wheel_bend: f64,
     /// samples until the next telemetry snapshot
     tele_due: i64,
     tele_every: i64,
@@ -320,7 +454,7 @@ pub struct Core {
 
 impl Core {
     /// Build the instrument from a project's state. Allocates: not on the audio thread.
-    pub fn new(sample_rate: f64, settings: &Settings, syllables: &[Syllable], params: VoiceParams, shared: &Shared) -> Core {
+    pub fn new(sample_rate: f64, settings: &Settings, prepared: &Prepared, params: VoiceParams, shared: &Shared) -> Core {
         // a new male engine is the largest airway at this rate, so telemetry sized for it fits any
         let mut engine = Engine::new(sample_rate);
         let mut tele = VoiceTelemetry::default();
@@ -336,7 +470,7 @@ impl Core {
         engine.set_body(settings.body);
         let mut singer = Singer::new();
         singer.body = settings.body;
-        let _ = singer.set_syllables(syllables_from(syllables));
+        let _ = singer.set_syllables(syllables_from(&prepared.syllables));
         singer.set_cursor(settings.start_syllable);
         let mut core = Core {
             engine,
@@ -353,6 +487,17 @@ impl Core {
             block,
             labels: [0; TELE_LABELS],
             presses: 0,
+            speech_cursor: settings.speech.start_line.min(prepared.speech.len().saturating_sub(1)),
+            speech_start: settings.speech.start_line.min(prepared.speech.len().saturating_sub(1)),
+            speech: gestures_of(&prepared.speech),
+            speech_generation: prepared.generation,
+            pad: Vec::new(),
+            spoken_serial: shared.spoken_serial.load(Ordering::Relaxed).wrapping_add(1),
+            spoken_line: NOT_SPEAKING,
+            spoken_generation: 0,
+            spoken_t0: 0.0,
+            key_bend: 1.0,
+            wheel_bend: 1.0,
             tele_due: 0,
             tele_every: (sample_rate / TELEMETRY_RATE) as i64,
         };
@@ -370,6 +515,11 @@ impl Core {
 
     pub fn singer(&self) -> &Singer {
         &self.singer
+    }
+
+    /// The line a note says next.
+    pub fn speech_cursor(&self) -> usize {
+        self.speech_cursor
     }
 
     fn apply_params(&mut self) {
@@ -407,12 +557,18 @@ impl Core {
                 self.engine.set_source(&SourcePatch::f0(midi_to_hz(midi as f64)));
                 self.update_gate();
             }
+            Mode::Speak => {
+                let semitones = (midi as f64 - SPEECH_ROOT).clamp(-SPEECH_RANGE, SPEECH_RANGE);
+                self.say_next(pow(2.0, semitones / 12.0));
+            }
         }
     }
 
     fn lift(&mut self, midi: u8) {
         match self.mode {
             Mode::Sing => self.singer.note_off(&mut self.engine, midi),
+            // a line is a one-shot: it ends by itself, or when the next one cuts it
+            Mode::Speak => {}
             Mode::Play => {
                 self.play_keys.retain(|&k| k != midi);
                 // fall back to the most recent note still held (legato)
@@ -430,7 +586,37 @@ impl Core {
         self.play_keys.clear();
         self.host_keys = 0;
         self.ui_keys = 0;
+        if self.mode == Mode::Speak {
+            self.stop_speaking();
+        }
         self.update_gate();
+    }
+
+    fn mark_spoken(&mut self, line: i32, generation: u32, t0: f64) {
+        self.spoken_serial = self.spoken_serial.wrapping_add(1);
+        self.spoken_line = line;
+        self.spoken_generation = generation;
+        self.spoken_t0 = t0;
+    }
+
+    /// Say the next line, at this pitch ratio. The whole contour moves through the bend, so a plan
+    /// isn't rebuilt per note.
+    fn say_next(&mut self, key_bend: f64) {
+        let Some(gestures) = self.speech.get(self.speech_cursor) else { return };
+        self.key_bend = key_bend;
+        self.engine.set_bend(self.key_bend * self.wheel_bend);
+        let t0 = self.engine.schedule(gestures, SPEECH_LEAD, true);
+        self.mark_spoken(self.speech_cursor as i32, self.speech_generation, t0);
+        self.speech_cursor = (self.speech_cursor + 1) % self.speech.len();
+    }
+
+    fn stop_speaking(&mut self) {
+        self.engine.stop_speech();
+        if self.spoken_line != NOT_SPEAKING {
+            self.mark_spoken(NOT_SPEAKING, 0, 0.0);
+        }
+        self.key_bend = 1.0;
+        self.engine.set_bend(self.wheel_bend);
     }
 
     fn lift_ui_keys(&mut self) {
@@ -462,6 +648,13 @@ impl Core {
             p.retired_syllables = Some(self.singer.set_syllables(syllables));
             self.start_syllable = 0;
         }
+        if let Some(new) = p.speech.take() {
+            p.retired_speech = Some(std::mem::replace(&mut self.speech, new.plans));
+            self.speech_generation = new.generation;
+            let last = self.speech.len().saturating_sub(1);
+            self.speech_cursor = if new.reset { 0 } else { self.speech_cursor.min(last) };
+            self.speech_start = if new.reset { 0 } else { self.speech_start.min(last) };
+        }
         if let Some(mode) = p.mode.take()
             && mode != self.mode
         {
@@ -491,6 +684,28 @@ impl Core {
                 self.start_syllable = self.singer.cursor();
             }
         }
+        if let Some(i) = p.speech_cursor.take() {
+            self.speech_cursor = i.min(self.speech.len().saturating_sub(1));
+            if !self.transport.playing {
+                self.speech_start = self.speech_cursor;
+            }
+        }
+        if let Some((gestures, generation)) = p.pad.take() {
+            let old = std::mem::replace(&mut self.pad, gestures);
+            p.retired_pad = Some(old);
+            if self.mode == Mode::Speak {
+                self.key_bend = 1.0;
+                self.engine.set_bend(self.wheel_bend);
+                let t0 = self.engine.schedule(&self.pad, SPEECH_LEAD, true);
+                self.mark_spoken(SAYING_PAD, generation, t0);
+            }
+        }
+        if std::mem::take(&mut p.speak_next) && self.mode == Mode::Speak {
+            self.say_next(1.0);
+        }
+        if std::mem::take(&mut p.stop_speech) && self.mode == Mode::Speak {
+            self.stop_speaking();
+        }
         if p.clear_ui_keys {
             p.clear_ui_keys = false;
             self.lift_ui_keys();
@@ -519,6 +734,7 @@ impl Core {
         let jumped = t.playing && was.playing && matches!((t.position, was.position), (Some(now), Some(last)) if now < last - 1e-3);
         if (started || jumped) && self.params.restart {
             self.singer.set_cursor(self.start_syllable);
+            self.speech_cursor = self.speech_start;
         }
         if was.playing && !t.playing {
             self.stop_notes();
@@ -557,7 +773,10 @@ impl Core {
                 }
             }
             Event::AllOff => self.stop_notes(),
-            Event::Bend(value) => self.engine.set_bend(pow(2.0, (value as f64 - 0.5) * 2.0 * BEND_RANGE / 12.0)),
+            Event::Bend(value) => {
+                self.wheel_bend = pow(2.0, (value as f64 - 0.5) * 2.0 * BEND_RANGE / 12.0);
+                self.engine.set_bend(self.key_bend * self.wheel_bend);
+            }
         }
     }
 
@@ -572,9 +791,15 @@ impl Core {
         let note = match self.mode {
             Mode::Sing => self.singer.sounding_note().map_or(-1, |m| m as i32),
             Mode::Play => self.play_keys.last().map_or(-1, |m| *m as i32),
+            Mode::Speak => -1,
         };
         shared.note.store(note, Ordering::Relaxed);
         shared.note_serial.store(self.presses, Ordering::Relaxed);
+        shared.speech_cursor.store(self.speech_cursor as i32, Ordering::Relaxed);
+        shared.spoken_line.store(self.spoken_line, Ordering::Relaxed);
+        shared.spoken_generation.store(self.spoken_generation, Ordering::Relaxed);
+        shared.spoken_t0.store(self.spoken_t0.to_bits(), Ordering::Relaxed);
+        shared.spoken_serial.store(self.spoken_serial, Ordering::Release);
         let n = samples as i64;
         if shared.watch.fetch_sub(n, Ordering::Relaxed) <= 0 {
             shared.watch.store(0, Ordering::Relaxed);
@@ -600,8 +825,11 @@ impl Core {
     pub fn reset(&mut self) {
         self.stop_notes();
         self.engine.stop_speech();
+        self.key_bend = 1.0;
+        self.wheel_bend = 1.0;
         self.engine.set_bend(1.0);
         self.singer.set_cursor(self.start_syllable);
+        self.speech_cursor = self.speech_start;
         self.transport = Transport::default();
     }
 }

@@ -69,6 +69,7 @@ function TopBar() {
             ? [
                 { value: "sing", label: "Sing" },
                 { value: "play", label: "Play" },
+                { value: "speak", label: "Speak" },
               ]
             : [
                 { value: "play", label: "Play" },

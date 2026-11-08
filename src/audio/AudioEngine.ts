@@ -206,6 +206,25 @@ export class AudioEngine {
     ipc({ type: "hold", on });
   }
 
+  /** The text to say changed: Rust plans its lines. */
+  pluginSpeech(edit: { text?: string; ipa?: boolean; rate?: number }): void {
+    ipc({ type: "speech", ...edit });
+  }
+
+  pluginSpeechCursor(index: number): void {
+    ipc({ type: "speechCursor", index });
+  }
+
+  /** Say the next line, as a note at the natural pitch would. */
+  pluginSpeak(): void {
+    ipc({ type: "speak" });
+  }
+
+  /** Say this once. */
+  pluginSayIpa(ipa: string): void {
+    ipc({ type: "sayIpa", ipa });
+  }
+
   /** Route the voice through the close-mic chain (on) or straight to the output (off). */
   setMic(on: boolean): void {
     if (on === this.micOn) return;

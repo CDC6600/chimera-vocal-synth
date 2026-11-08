@@ -56,7 +56,7 @@ const PLUGIN_VIEWPORTS: { w: number; h: number }[] = [
   { w: 1920, h: 1080 },
   { w: 2560, h: 1440 },
 ];
-const PLUGIN_MODES = ["sing", "play"] as const;
+const PLUGIN_MODES = ["sing", "play", "speak"] as const;
 
 interface Problem {
   kind: string;

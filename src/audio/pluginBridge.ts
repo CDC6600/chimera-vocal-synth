@@ -87,6 +87,9 @@ export function sendToPlugin(m: ToWorklet): void {
       if (Object.keys(rest).length || m.tipFree !== undefined) ipc({ type: "artic", values: rest, tipFree: m.tipFree });
       break;
     }
+    case "stopSpeech":
+      ipc({ type: "stopSpeech" });
+      break;
     // the rest is what the page plans and plays by itself on the website: here Rust does it
     default:
       break;

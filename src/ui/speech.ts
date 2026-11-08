@@ -1,4 +1,9 @@
-/** Main-thread speech planning: text/IPA → phrases → gestural plan → worklet. */
+/**
+ * Main-thread speech planning: text/IPA → phrases → gestural plan → worklet. In the plugin Rust plans
+ * and plays, and this follows what it says (docs/plugin.md, "Speak").
+ */
+import { create } from "zustand";
+import { inPlugin } from "../audio/pluginBridge.ts";
 import type { BodyMix } from "../wasm/types.ts";
 import { EnglishG2P, type Phrase } from "../wasm/engine.ts";
 import { tokenizeIpa } from "../wasm/engine.ts";
@@ -8,6 +13,34 @@ import type { Gesture } from "../wasm/types.ts";
 import { wordSpans, type WordSpan } from "./words.ts";
 
 export const g2p = new EnglishG2P();
+
+interface SpeechState {
+  text: string;
+  /** the text is IPA */
+  ipa: boolean;
+  rate: number;
+  /** in the plugin: the lines a note says, and the next one */
+  lines: string[];
+  cursor: number;
+  edit: (e: { text?: string; ipa?: boolean; rate?: number }) => void;
+  setCursor: (i: number) => void;
+}
+
+export const useSpeech = create<SpeechState>((set) => ({
+  text: "Hello. Can you hear me?",
+  ipa: false,
+  rate: 1,
+  lines: [],
+  cursor: 0,
+  edit: (e) => {
+    set(e);
+    if (inPlugin) engine.pluginSpeech(e);
+  },
+  setCursor: (i) => {
+    set({ cursor: i });
+    engine.pluginSpeechCursor(i);
+  },
+}));
 
 export interface SpokenPlan {
   plan: Plan;
@@ -88,4 +121,27 @@ export function spokenWordNow(): { key: string; text: string } | null {
   const pt = t - p.offset;
   const i = p.words.findIndex((w) => pt >= w.t0 && pt < w.t1 + 0.05);
   return i < 0 ? null : { key: `${p.id}:${i}`, text: p.words[i].text };
+}
+
+// ---- in the plugin: what Rust is saying
+
+/** `spokenLine` values: bridge's NOT_SPEAKING and SAYING_PAD. */
+const NOT_SPEAKING = -1, SAYING_PAD = -2;
+let spokenSerial = -1;
+
+/** Rust's spoken serial changed: fetch that plan, unless it has been replaced since it started. */
+export async function followSpoken(serial: number, line: number, generation: number, t0: number): Promise<void> {
+  if (serial === spokenSerial) return;
+  spokenSerial = serial;
+  if (line === NOT_SPEAKING) {
+    if (current) cutId = current.id;
+    return;
+  }
+  const r = await fetch(line === SAYING_PAD ? "/speech/pad" : `/speech/${line}`, { cache: "no-store" });
+  if (!r.ok) return;
+  const got = (await r.json()) as { generation: number; phrases: Phrase[]; plan: Plan };
+  // a plan from another generation isn't what's sounding, and another line may have started by now
+  if (got.generation !== generation || serial !== spokenSerial) return;
+  current = { plan: got.plan, offset: t0, id: serial, transcription: transcribe(got.phrases), words: wordSpans(got.phrases, got.plan) };
+  for (const l of listeners) l(current);
 }

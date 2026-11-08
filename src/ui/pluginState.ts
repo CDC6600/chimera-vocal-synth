@@ -7,10 +7,11 @@ import { ARTIC_PARAMS, SOURCE_PARAMS, dbToVolume, gestureOpen, setRevision } fro
 import type { BodyMix, HumanArtic, Syllable, VoiceSource } from "../wasm/engine.ts";
 import { TELE_LABELS, decodeTelemetry } from "../worklet/telemetry.ts";
 import { clearPluginNotes, followPluginNote, roll, useSing } from "./singing.ts";
+import { followSpoken, useSpeech } from "./speech.ts";
 import { useStore } from "./store.ts";
 
 /** Scalars at the head of a `/poll` response: POLL_HEADER in crates/chimera-plugin/src/bridge.rs. */
-const POLL_HEADER = 14;
+const POLL_HEADER = 20;
 /** Parameters are read every this many frames: about 20 times a second. */
 const PARAMS_EVERY = 3;
 /** The engine-load readout's window (ms). */
@@ -21,11 +22,18 @@ type Params = Record<string, number>;
 interface Snapshot {
   revision: number;
   syllablesVersion: number;
-  settings: { lyrics: string; body: BodyMix; mode: "sing" | "play"; artic: Partial<HumanArtic>; tipFree: boolean; voiced: boolean; f0: number };
+  settings: { lyrics: string; body: BodyMix; mode: "sing" | "play" | "speak"; artic: Partial<HumanArtic>; tipFree: boolean; voiced: boolean; f0: number; speech: { text: string; ipa: boolean; rate: number } };
   params: Params;
   syllables: Syllable[];
   cursor: number;
+  speech: SpeechLines;
+  speechCursor: number;
   sampleRate: number;
+}
+
+interface SpeechLines {
+  generation: number;
+  lines: string[];
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -36,6 +44,7 @@ async function getJson<T>(path: string): Promise<T> {
 
 let revision = -1;
 let syllablesVersion = -1;
+let linesGeneration = -1;
 
 /** The whole state, as a project was saved or restored: nothing the page held survives this. */
 function adopt(s: Snapshot): void {
@@ -50,6 +59,9 @@ function adopt(s: Snapshot): void {
   for (const [key, id] of Object.entries(ARTIC_PARAMS)) (artic as unknown as Params)[key] = s.params[id];
   useStore.setState({ started: true, mode: s.settings.mode, body: s.settings.body, source, artic, tipFree: s.settings.tipFree, volume: dbToVolume(s.params.gain), hold: false, heldNotes: [] });
   useSing.setState({ lyrics: s.settings.lyrics, syllables: s.syllables, cursor: s.cursor, vibrato: s.params.vibrato });
+  linesGeneration = s.speech.generation;
+  const { text, ipa, rate } = s.settings.speech;
+  useSpeech.setState({ text, ipa, rate, lines: s.speech.lines, cursor: s.speechCursor });
 }
 
 /** Host values, for the parameters not being moved here. */
@@ -82,7 +94,7 @@ async function poll(): Promise<void> {
   const r = await fetch("/poll", { cache: "no-store" });
   const buf = await r.arrayBuffer();
   const h = new Float64Array(buf, 0, POLL_HEADER);
-  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, n] = h;
+  const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, n] = h;
   if (n > 0) {
     const { t, nPh, nOr } = decodeTelemetry(new Float64Array(buf, 8 * POLL_HEADER, n), new Uint8Array(buf, 8 * (POLL_HEADER + n), TELE_LABELS));
     // a new voice's clock starts from zero: what's on the roll belongs to the old timeline
@@ -111,6 +123,12 @@ async function poll(): Promise<void> {
     useSing.setState({ syllables: await getJson<Syllable[]>("/syllables") });
   }
   if (cursor !== useSing.getState().cursor) useSing.setState({ cursor });
+  if (lines !== linesGeneration) {
+    linesGeneration = lines;
+    useSpeech.setState({ lines: (await getJson<SpeechLines>("/speech")).lines });
+  }
+  if (speechCursor !== useSpeech.getState().cursor) useSpeech.setState({ cursor: speechCursor });
+  void followSpoken(spokenSerial, spokenLine, spokenGeneration, spokenT0);
   const clock = engine.voiceClock() ?? 0;
   followPluginNote(note, sung, serial, clock);
   if (note !== shownNote) {

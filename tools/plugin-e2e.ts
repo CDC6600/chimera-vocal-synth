@@ -65,7 +65,7 @@ try {
 
   // ---- what the plugin shows
   const modes = await page.locator(".topbar [role=radiogroup] [role=radio], .topbar .segmented button").allTextContents();
-  check("only Sing and Play are offered", modes.includes("Sing") && modes.includes("Play") && !modes.includes("Speak") && !modes.includes("Bestiary") && !modes.includes("Beatbox"), modes);
+  check("Sing, Play and Speak are offered, and not Bestiary", modes.includes("Sing") && modes.includes("Play") && modes.includes("Speak") && !modes.includes("Bestiary"), modes);
   check("no start prompt: the voice is already running", (await page.locator(".start-prompt").count()) === 0);
   check("no link away from the plugin", (await page.locator(".repo-link").count()) === 0);
   check("no Web MIDI button", (await page.locator("button.midi").count()) === 0);
@@ -222,6 +222,67 @@ try {
   const after = await state();
   check("and sent nothing back", after.settings.lyrics === "la la land" && after.settings.body.child === 1 && after.settings.artic.jaw === 1.5 && after.settings.f0 === 300, after.settings);
   await reopened.close();
+
+  // ---- Speak: each note says the next line
+  const modeBefore = (await state()).settings.mode as string;
+  await page.getByRole("radio", { name: /^speak$/i }).click();
+  await until("Rust is in Speak", async () => (await state()).settings.mode === "speak");
+  const say = page.getByRole("textbox", { name: "Text to speak" });
+  await say.fill("Hello there.\nNice to meet you.");
+  await until("each line of the text is a line", async () => (await page.locator(".say-line").count()) === 2);
+  const nextLine = () => page.locator(".say-line.next").textContent();
+  check("the first is next", (await nextLine()) === "Hello there.");
+  const shown = () => page.locator(".transcription").textContent();
+  check("nothing transcribed until it's said", /appears here/.test((await shown()) ?? ""));
+  await host("note", 60);
+  await until("a note says the line: its transcription shows", async () => /^\/.*\/$/.test((await shown()) ?? ""));
+  await until("the voice is voiced", async () => (await tele())!.voicing > 0.3);
+  await until("and the next line is marked", async () => (await nextLine()) === "Nice to meet you.");
+  await until("the page has the plan's words", () => page.evaluate(async () => {
+    const line = await fetch("/speech/0").then((r) => r.json());
+    return line.phrases[0].words[0] === "hello" && line.plan.gestures.length > 0;
+  }));
+  await host("off", 60);
+  await page.waitForTimeout(100);
+  check("a line isn't stopped by its note's release", (await tele())!.voicing > 0.1 || (await page.evaluate(() => fetch("/speech").then((r) => r.ok))));
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await until("Stop stops it", async () => (await tele())!.voicing < 0.1);
+  await page.getByRole("button", { name: "Speak", exact: true }).click();
+  await until("the Speak button says the next line", async () => (await nextLine()) === "Hello there." && (await tele())!.voicing > 0.1);
+  // picking a line while stopped is where playing starts
+  await page.locator(".say-line").nth(1).click();
+  await until("a line can be picked", async () => (await nextLine()) === "Nice to meet you." && (await state()).settings.speech.startLine === 1);
+  await host("play");
+  await until("the transport starts from it", async () => (await nextLine()) === "Nice to meet you.");
+  await host("note", 60);
+  await until("and a note says it", async () => (await nextLine()) === "Hello there.");
+  await host("off", 60);
+  await host("stop");
+  await until("the transport's stop silences it", async () => (await tele())!.voicing < 0.1);
+  // the chart says one sound, without moving the place
+  const place = await nextLine();
+  await page.locator("button.ipa", { hasText: /^p$/ }).click();
+  await until("a pad says its sound", async () => /p/.test((await shown()) ?? "") && /ɑ/.test((await shown()) ?? ""));
+  check("and keeps the place", (await nextLine()) === place);
+  // the rate and the IPA toggle replan
+  const planEnd = () => page.evaluate(() => fetch("/speech/0").then((r) => r.json()).then((l) => l.plan.end as number));
+  const slow = await planEnd();
+  await page.getByRole("slider", { name: /rate/i }).first().press("End");
+  await until("a faster rate replans the lines", async () => (await planEnd()) < slow);
+  await page.locator(".toggle", { hasText: "Text is IPA" }).click();
+  await page.getByRole("textbox", { name: "IPA to speak" }).fill("ˈhɛloʊ");
+  await until("IPA is said as written", async () => (await page.locator(".say-line").count()) === 1 && (await state()).settings.speech.ipa === true);
+  await page.locator(".toggle", { hasText: "Text is IPA" }).click();
+  await until("back to text", async () => (await state()).settings.speech.ipa === false);
+  await say.fill("Saved with the project.");
+  await until("the text is in the project's state", async () => (await state()).settings.speech.text === "Saved with the project.");
+  // restored projects bring their text
+  const project = (await state()).settings;
+  project.speech = { text: "From a restored project.", ipa: false, rate: 1, startLine: 0 };
+  await host("restore", JSON.stringify(project));
+  await until("a restore brings its text", async () => (await say.inputValue()) === "From a restored project." && (await page.locator(".say-line").first().textContent()) === "From a restored project.");
+  await page.getByRole("radio", { name: new RegExp(`^${modeBefore}$`, "i") }).click();
+  await until("and out of Speak again", async () => (await state()).settings.mode === modeBefore);
 
   // ---- the window's grip
   const grip = page.locator(".resize-grip");

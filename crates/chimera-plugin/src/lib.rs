@@ -9,7 +9,6 @@ use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Instant;
 
 use chimera::phonetics::english::EnglishG2P;
-use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::DEFAULT_SOURCE;
 use nih_plug::prelude::*;
 
@@ -17,8 +16,9 @@ pub mod bridge;
 pub mod core;
 #[cfg(target_os = "macos")]
 mod editor;
+pub mod speech;
 
-use self::core::{Core, Event, MIN_SAMPLE_RATE, Settings, Shared, Transport, VoiceParams};
+use self::core::{Core, Event, MIN_SAMPLE_RATE, Prepared, Settings, Shared, Transport, VoiceParams};
 
 /// The pronouncing dictionary, parsed once (off the audio thread).
 pub fn g2p() -> &'static EnglishG2P {
@@ -43,13 +43,12 @@ pub fn g2p() -> &'static EnglishG2P {
 pub fn rebuild(params: &ChimeraParams, shared: &Shared, voice: VoiceParams, fs: f64) -> Option<Core> {
     let _together = shared.transaction();
     let settings = params.settings.read().unwrap_or_else(|e| e.into_inner()).clone();
-    let syllables = lyrics_to_syllables(&settings.lyrics, g2p());
+    let prepared = Prepared::of(&settings, shared);
     shared.restart(fs);
     // below this the airway goes unstable: stay silent rather than refusing to activate, which
     // some hosts' plugin scans treat as an error
-    let core = (fs >= MIN_SAMPLE_RATE).then(|| Core::new(fs, &settings, &syllables, voice, shared));
-    *shared.syllables.lock().unwrap_or_else(|e| e.into_inner()) = syllables;
-    shared.syllables_version.fetch_add(1, Ordering::Relaxed);
+    let core = (fs >= MIN_SAMPLE_RATE).then(|| Core::new(fs, &settings, &prepared, voice, shared));
+    shared.adopt(prepared);
     core
 }
 
