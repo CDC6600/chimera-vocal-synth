@@ -40,15 +40,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Test the engine's live path and the plugin
-        run: cargo test -p chimera-plugin -p chimera --release --test singer_alloc --lib
+      - name: Test the plugin and the engine's live path
+        run: |
+          cargo test -p chimera-plugin --release
+          cargo test -p chimera --release --test singer_alloc
 
       - name: Build and install the bundles
         run: crates/chimera-plugin/macos/build.sh --install
 
-      - name: Validate
-        run: crates/chimera-plugin/macos/validate.sh
-
+      # before validating, so a strict validator can't keep a build from being tried in a real host
       - name: Package
         run: |
           mkdir -p out
@@ -61,3 +61,6 @@ jobs:
           name: chimera-plugin-macos
           path: out/*.zip
           if-no-files-found: error
+
+      - name: Validate
+        run: crates/chimera-plugin/macos/validate.sh

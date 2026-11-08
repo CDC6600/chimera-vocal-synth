@@ -185,7 +185,7 @@ pub struct Shared {
     pub busy_ns: AtomicU64,
     pub audio_ns: AtomicU64,
     pub load_peak: AtomicF32,
-    pub sample_rate: AtomicF32,
+    sample_rate: AtomicU64,
     /// the engine stopped (a panic, or a non-finite sample): silent until it is re-created
     pub faulted: AtomicBool,
 }
@@ -254,19 +254,24 @@ impl Shared {
         let old = std::mem::replace(&mut *self.lock(), fresh);
         drop(old);
         self.dirty.store(false, Ordering::Release);
-        self.sample_rate.store(sample_rate as f32);
+        self.sample_rate.store(sample_rate.to_bits(), Ordering::Relaxed);
         self.faulted.store(false, Ordering::Relaxed);
         self.revision.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// The current sample rate (0: not active).
+    pub fn sample_rate(&self) -> f64 {
+        f64::from_bits(self.sample_rate.load(Ordering::Relaxed))
+    }
+
     /// Someone is looking: collect telemetry for a little longer.
     pub fn watch(&self) {
-        self.watch.store((WATCH_TIME * self.sample_rate.load() as f64) as i64, Ordering::Relaxed);
+        self.watch.store((WATCH_TIME * self.sample_rate()) as i64, Ordering::Relaxed);
     }
 
     /// Account for one block's cost.
     pub fn note_load(&self, busy_ns: u64, samples: usize) {
-        let audio = (samples as f64 / self.sample_rate.load() as f64 * 1e9) as u64;
+        let audio = (samples as f64 / self.sample_rate() * 1e9) as u64;
         self.busy_ns.fetch_add(busy_ns, Ordering::Relaxed);
         self.audio_ns.fetch_add(audio, Ordering::Relaxed);
         let used = busy_ns as f32 / audio.max(1) as f32;

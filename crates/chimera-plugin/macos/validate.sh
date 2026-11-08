@@ -20,7 +20,12 @@ validator=$(find . -type f -name clap-validator -perm -u+x | head -1)
 echo "::endgroup::"
 
 echo "::group::auval"
-auval -a | grep -i chimera || { echo "the AU registry doesn't list CHIMERA"; exit 1; }
+# the registry takes a moment to notice a new component
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  auval -a | grep -q 'Voic Chma' && break
+  sleep 3
+done
+auval -a | grep 'Voic Chma' || { echo "the AU registry doesn't list CHIMERA"; exit 1; }
 auval -v aumu Voic Chma
 echo "::endgroup::"
 

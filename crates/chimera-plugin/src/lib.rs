@@ -13,10 +13,11 @@ use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera::voice::human_voice::DEFAULT_SOURCE;
 use nih_plug::prelude::*;
 
+pub mod bridge;
+pub mod core;
 #[cfg(target_os = "macos")]
 mod editor;
 
-pub mod core;
 use self::core::{Core, Event, MIN_SAMPLE_RATE, Settings, Shared, Transport, VoiceParams};
 
 /// The pronouncing dictionary, parsed once (off the audio thread).
