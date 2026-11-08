@@ -30,6 +30,8 @@ const FOLLOW_SUPERVIEW: usize = 2 | 16;
 /// Polls after the grip lets go before the host's view is taken as the answer (about half a second:
 /// a CLAP host may resize a little after it's asked).
 const SETTLE_POLLS: u32 = 30;
+/// Room left on the screen for the host's title bar and toolbar above the editor (points).
+const HOST_CHROME: f64 = 60.0;
 
 pub struct WebEditor {
     params: Arc<ChimeraParams>,
@@ -102,6 +104,19 @@ impl WindowHost {
     fn settle(&self) {
         *self.settling.lock().unwrap_or_else(|e| e.into_inner()) = SETTLE_POLLS;
     }
+}
+
+/// A size that fits on the screen in use, host's window included. A window hanging off the screen
+/// would have its grip there too, with no way to make it smaller; the page zooms out to suit.
+fn fit_screen((width, height): (u32, u32)) -> (u32, u32) {
+    // SAFETY: class methods on the main thread, where hosts ask for the editor's size
+    let screen: *const AnyObject = unsafe { msg_send![class!(NSScreen), mainScreen] };
+    if screen.is_null() {
+        return (width, height);
+    }
+    // SAFETY: an NSScreen, and `visibleFrame` returns a CGRect
+    let room: CGRect = unsafe { msg_send![screen, visibleFrame] };
+    (width.min(room.size.width as u32).max(WINDOW_MIN.0), height.min((room.size.height - HOST_CHROME).max(0.0) as u32).max(WINDOW_MIN.1))
 }
 
 /// The pointer on screen (points, y upwards). The page's own coordinates change with its zoom.
@@ -235,7 +250,7 @@ impl Editor for WebEditor {
     }
 
     fn size(&self) -> (u32, u32) {
-        *self.params.window.read().unwrap_or_else(|e| e.into_inner())
+        fit_screen(*self.params.window.read().unwrap_or_else(|e| e.into_inner()))
     }
 
     fn set_scale_factor(&self, _factor: f32) -> bool {

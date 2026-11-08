@@ -13,6 +13,8 @@ const ON_GRID = 0.02;
 const IN_TUNE = 50;
 /** What the host should hear reported in Beatbox (s): BEAT_LATENCY in crates/chimera-plugin/src/core.rs. */
 const BEAT_LATENCY = 0.18;
+/** A host may report it at its device's rate rather than the rendered one (Hz). */
+const RATES = [44100, 48000];
 /** Two renders of one case are the same sound when they differ by less than this, relative to it (dB). */
 const SAME_SOUND = -40;
 /** Above this a stretch is sounding, and below SILENT it isn't. */
@@ -93,6 +95,43 @@ function pitch({ fs, x }: Wav, from: number, to: number): number {
   return fs / (best + (0.5 * (l - r)) / (l - 2 * m + r));
 }
 
+/** Where a file sounds, as from-to in seconds, for a failure to show. */
+function spans(w: Wav): string {
+  const step = 0.01, out: string[] = [];
+  let from = -1;
+  for (let t = 0; t < w.x.length / w.fs; t += step) {
+    const on = rms(w, t, t + step) > SOUNDING;
+    if (on && from < 0) from = t;
+    if (!on && from >= 0) {
+      out.push(`${from.toFixed(2)}-${t.toFixed(2)}`);
+      from = -1;
+    }
+  }
+  if (from >= 0) out.push(`${from.toFixed(2)}-end`);
+  return out.join(" ");
+}
+
+/** Where two files part, and each stretch they differ in. */
+function differences(a: Wav, b: Wav): string {
+  const n = Math.min(a.x.length, b.x.length), step = Math.round(0.01 * a.fs), out: string[] = [];
+  let first = -1, from = -1;
+  for (let i = 0; i < n; i += step) {
+    let d = 0;
+    for (let k = i; k < Math.min(n, i + step); k++) {
+      d = Math.max(d, Math.abs(a.x[k] - b.x[k]));
+      if (d > 0 && first < 0) first = k;
+    }
+    const on = d > SOUNDING;
+    if (on && from < 0) from = i;
+    if (!on && from >= 0) {
+      out.push(`${(from / a.fs).toFixed(2)}-${(i / a.fs).toFixed(2)}`);
+      from = -1;
+    }
+  }
+  if (from >= 0) out.push(`${(from / a.fs).toFixed(2)}-end`);
+  return `first sample ${first} (${(first / a.fs).toFixed(4)} s), audibly at ${out.join(" ")}`;
+}
+
 const folder = process.argv[2];
 if (!folder) throw new Error("which folder?");
 
@@ -162,16 +201,30 @@ for (const r of records) {
   }
   const name = `${r.format} ${r.case}`;
   if (r.case === "editor") {
-    console.log(`     ${name}: ${JSON.stringify(r)}`);
+    // AU has no chunk call, so its state can't be read from here
+    if (r.format === "AU") {
+      console.log(`     ${name}: ${JSON.stringify(r)}`);
+      continue;
+    }
+    check(`${name} click reached the plugin`, r.mode === "beatbox", `mode ${r.mode}, reported delay ${r.pdc}`);
+    check(`${name} grip resized it`, r.window !== r.opened, `${r.opened} to ${r.window}`);
     continue;
   }
   if (r.error) {
     check(name, false, String(r.error));
     continue;
   }
+  if (r.skipped) {
+    console.log(`skip ${name}: ${r.skipped}`);
+    continue;
+  }
+  if (r.case === "au-state") {
+    console.log(`     ${name}: ${r.state}`);
+    continue;
+  }
   const beat = r.case === "beatbox" || r.case === "pads";
-  const expected = beat ? BEAT_LATENCY * 44100 : 0;
-  check(`${name} reports its delay`, Math.abs(Number(r.pdc) - expected) <= 1, `${r.pdc} samples, loaded as "${r.fx_name}"`);
+  const expected = beat ? RATES.map((fs) => BEAT_LATENCY * fs) : [0];
+  check(`${name} reports its delay`, expected.some((e) => Math.abs(Number(r.pdc) - e) <= 1), `${r.pdc} samples, loaded as "${r.fx_name}"`);
   const wav = readWav(`${folder}/${r.format}-${r.case}.wav`);
   judge[r.case as string](name, wav);
   // every format is the same binary, so it should render the same sound
@@ -184,7 +237,13 @@ for (const r of records) {
       level += first.wav.x[i] ** 2;
     }
     const db = 10 * Math.log10(diff / level + 1e-30);
-    check(`${name} sounds like ${first.format}`, db < SAME_SOUND, `difference ${db.toFixed(1)} dB`);
+    const same = db < SAME_SOUND;
+    check(`${name} sounds like ${first.format}`, same, `difference ${db.toFixed(1)} dB`);
+    if (!same) {
+      console.log(`     ${first.format}: ${spans(first.wav)}`);
+      console.log(`     ${r.format}: ${spans(wav)}`);
+      console.log(`     differ: ${differences(first.wav, wav)}`);
+    }
   }
 }
 

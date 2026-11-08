@@ -52,31 +52,56 @@ dialogs() {
   end tell' 2>/dev/null || true
 }
 
-# Where these are in the page at 1280x800: tools/plugin-e2e.ts's harness, measured.
-BEATBOX_X=624
+# Where the Beatbox tab is in the page at zoom 1, from a screenshot of it in WKWebView, and the
+# height of REAPER's title bar and toolbar above the editor. The page zooms out below LAYOUT_MIN
+# (page_zoom in crates/chimera-plugin/src/bridge.rs).
+BEATBOX_X=612
 BEATBOX_Y=26
-VIEW_W=1280
-VIEW_H=800
+CHROME=54
+LAYOUT_W=1120
+LAYOUT_H=800
+
+about_reaper_open() {
+  osascript -e 'tell application "System Events" to tell process "REAPER" to get name of every window' 2>/dev/null | grep -q 'About REAPER'
+}
+
+# REAPER's nag covers the window until its countdown lets dialogs() answer it
+wait_for_nag() {
+  local i answered
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    about_reaper_open || return 0
+    answered=$(dialogs)
+    [ -z "$answered" ] || echo "answered $answered"
+    sleep 1
+  done
+}
 
 editor() { # format
-  local fmt=$1 x y w h left top gx gy
-  osascript -e 'tell application "System Events" to tell process "REAPER"' \
-    -e 'set frontmost to true' \
-    -e 'get name of every window' \
-    -e 'end tell' 2>&1 || true
+  local fmt=$1 x y w h view_h zoom tab_x tab_y gx gy
+  wait_for_nag
+  osascript -e 'tell application "System Events" to tell process "REAPER" to set frontmost to true' 2>&1 || true
   shot "$fmt-open"
   read -r x y w h <<<"$(bounds)" || true
   echo "$fmt window: ${x:-?} ${y:-?} ${w:-?} ${h:-?}"
   case "${h:-}" in '' | *[!0-9]*) return 0 ;; esac
-  # the plugin's view fills the window's bottom right
-  left=$((x + w - VIEW_W))
-  top=$((y + h - VIEW_H))
-  cliclick "c:$((left + BEATBOX_X)),$((top + BEATBOX_Y))"
+  if [ "$fmt" = AU ]; then
+    # REAPER's own toggle between the plugin's view and its generic sliders
+    cliclick "c:$((x + w - 72)),$((y + 39))"
+    sleep 3
+    shot "$fmt-ui-button"
+    return 0
+  fi
+  view_h=$((h - CHROME))
+  zoom=$(awk -v w="$w" -v h="$view_h" -v lw="$LAYOUT_W" -v lh="$LAYOUT_H" 'BEGIN { z = w / lw; if (h / lh < z) z = h / lh; if (z > 1) z = 1; print z }')
+  tab_x=$(awk -v x="$x" -v z="$zoom" -v t="$BEATBOX_X" 'BEGIN { printf "%d", x + z * t }')
+  tab_y=$(awk -v y="$y" -v z="$zoom" -v c="$CHROME" -v t="$BEATBOX_Y" 'BEGIN { printf "%d", y + c + z * t }')
+  echo "$fmt zoom $zoom, Beatbox tab at $tab_x,$tab_y"
+  cliclick "c:$tab_x,$tab_y"
   sleep 3
   shot "$fmt-beatbox"
-  gx=$((x + w - 8))
-  gy=$((y + h - 8))
-  cliclick "m:$gx,$gy" w:200 "dd:$gx,$gy" w:200 "dm:$((gx + 60)),$((gy + 40))" w:200 "dm:$((gx + 160)),$((gy + 100))" w:200 "du:$((gx + 160)),$((gy + 100))"
+  gx=$((x + w - 5))
+  gy=$((y + h - 5))
+  cliclick "m:$gx,$gy" w:200 "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
   sleep 3
   echo "$fmt window after the grip: $(bounds)"
   shot "$fmt-resized"
@@ -133,5 +158,8 @@ kill -9 "$pid" 2>/dev/null || true
 
 tail -20 "$out/reaper.log" || true
 grep -il chimera "$config"/*.ini 2>/dev/null | while read -r f; do echo "--- $f"; grep -i -B1 -A1 chimera "$f" | cut -c1-160; done || true
+
+echo "--- the AU's view, loaded as Apple documents for hosts"
+swift "$here/host-test/au_view.swift" 2>&1 | tail -20 || true
 
 bun "$here/host-test/check.ts" "$out"

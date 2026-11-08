@@ -163,6 +163,12 @@ local function run_case(format, case)
     return
   end
   local _, name = reaper.TrackFX_GetFXName(tr, fx, "")
+  -- REAPER has no call for an AU's state, so those settings can only be reached from its editor
+  if format == "AU" and case.patches then
+    record({ format = format, case = case.name, skipped = "REAPER can't set an AU's state from a script" })
+    reaper.DeleteTrack(tr)
+    return
+  end
   local good, err = pcall(function()
     for _, patch in ipairs(case.patches or {}) do patch_settings(tr, fx, format, patch) end
     add_notes(tr, case.notes, case.seconds)
@@ -206,9 +212,18 @@ local function editor(format)
   if fx < 0 then return end
   reaper.TrackFX_Show(tr, fx, 3) -- a floating window
   sleep(5)
+  if format == "AU" then
+    local _, whole = reaper.GetTrackStateChunk(tr, "", false)
+    record({ format = format, case = "au-state", state = (whole:match("<AU.-\n>") or whole):sub(1, 400) })
+  end
+  local function window_of(state)
+    return state:match('\"window\":\"%[(%d+,%d+)%]') or "?"
+  end
+  local opened = window_of(state_of(tr, fx, format))
   local answered = ask("editor-" .. format)
+  sleep(2) -- the grip's size settles once it's let go
   local state = state_of(tr, fx, format)
-  record({ format = format, case = "editor", answered = answered, pdc = pdc(tr, fx), mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?", window = state:match('\"window\":\"%[(%d+,%d+)%]') or "?" })
+  record({ format = format, case = "editor", answered = answered, pdc = pdc(tr, fx), mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?", opened = opened, window = window_of(state) })
   reaper.TrackFX_Show(tr, fx, 2)
   sleep(1)
   reaper.DeleteTrack(tr)
