@@ -4,6 +4,7 @@
  */
 import workletUrl from "../worklet/processor.ts?worker&url";
 import { chimeraModule } from "../wasm/chimera.ts";
+import { inPlugin, ipc, sendToPlugin, setParam, volumeToDb } from "./pluginBridge.ts";
 import type { ToWorklet, FromWorklet, TelemetryMessage, PlannedMessage, CreatureTelemetryMessage } from "../worklet/protocol.ts";
 import type { BodyMix } from "../wasm/types.ts";
 import type { HumanArtic } from "../wasm/types.ts";
@@ -104,29 +105,31 @@ export class AudioEngine {
     master.connect(analyser);
     master.connect(fast);
     master.connect(scope);
-    node.port.onmessage = (e: MessageEvent<FromWorklet>) => {
-      const m = e.data;
-      if (m.type === "telemetry") {
-        this.latest = m;
-        this.latestAt = performance.now();
-        this.latestCreature = null;
-        this.load = m.load;
-        for (const l of this.listeners) l(m);
-      } else if (m.type === "ctelemetry") {
-        this.latestCreature = m;
-        this.latest = null;
-        this.load = m.load;
-      } else if (m.type === "planned") {
-        this.lastPlan = m;
-        for (const l of this.plannedListeners) l(m);
-      } else if (m.type === "ready") {
-        for (const l of this.readyListeners) l();
-      } else if (m.type === "error") {
-        this.error = m.message;
-        console.error("worklet:", m.message);
-      }
-    };
+    node.port.onmessage = (e: MessageEvent<FromWorklet>) => this.receive(e.data);
     await ctx.resume();
+  }
+
+  /** A message from the engine: the worklet's, or the plugin's as the page's poll decodes it. */
+  receive(m: FromWorklet): void {
+    if (m.type === "telemetry") {
+      this.latest = m;
+      this.latestAt = performance.now();
+      this.latestCreature = null;
+      this.load = m.load;
+      for (const l of this.listeners) l(m);
+    } else if (m.type === "ctelemetry") {
+      this.latestCreature = m;
+      this.latest = null;
+      this.load = m.load;
+    } else if (m.type === "planned") {
+      this.lastPlan = m;
+      for (const l of this.plannedListeners) l(m);
+    } else if (m.type === "ready") {
+      for (const l of this.readyListeners) l();
+    } else if (m.type === "error") {
+      this.error = m.message;
+      console.error("worklet:", m.message);
+    }
   }
 
   onTelemetry(l: Listener): () => void {
@@ -176,7 +179,31 @@ export class AudioEngine {
   }
 
   private send(m: ToWorklet): void {
-    this.node?.port.postMessage(m);
+    if (inPlugin) sendToPlugin(m);
+    else this.node?.port.postMessage(m);
+  }
+
+  // ---- what only the plugin has: there the keys, the lyrics and the mode belong to Rust
+
+  /** A key on the page went down or up. */
+  pluginNote(midi: number, on: boolean, velocity?: number): void {
+    ipc({ type: "note", midi, on, velocity });
+  }
+
+  pluginLyrics(text: string): void {
+    ipc({ type: "lyrics", text });
+  }
+
+  pluginCursor(index: number): void {
+    ipc({ type: "cursor", index });
+  }
+
+  pluginMode(mode: string): void {
+    ipc({ type: "mode", mode });
+  }
+
+  pluginHold(on: boolean): void {
+    ipc({ type: "hold", on });
   }
 
   /** Route the voice through the close-mic chain (on) or straight to the output (off). */
@@ -207,7 +234,8 @@ export class AudioEngine {
   }
 
   setVolume(v: number): void {
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    if (inPlugin) setParam("gain", volumeToDb(v));
+    else if (this.master && this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
   }
 
   setBody(body: BodyMix): void {

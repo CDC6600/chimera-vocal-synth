@@ -8,6 +8,7 @@
  */
 import { create } from "zustand";
 import { engine } from "../audio/AudioEngine.ts";
+import { inPlugin, setParam } from "../audio/pluginBridge.ts";
 import { g2p } from "./speech.ts";
 import { lyricsToSyllables, type Syllable } from "../wasm/engine.ts";
 import { planSong, planNoteOn, planNoteOff, planMelisma } from "../wasm/engine.ts";
@@ -57,11 +58,24 @@ export const useSing = create<SingState>((set, get) => ({
   demo: null,
   demoAt: -1,
   setLyrics: (text) => {
+    if (inPlugin) {
+      // Rust reads the lyrics: the syllables and the cursor come back with the next polls
+      set({ lyrics: text });
+      engine.pluginLyrics(text);
+      return;
+    }
     stopDemo();
     set({ lyrics: text, syllables: lyricsToSyllables(text), cursor: 0 });
   },
-  setCursor: (i) => set({ cursor: Math.max(0, Math.min(i, Math.max(0, get().syllables.length - 1))) }),
-  setVibrato: (cents) => set({ vibrato: cents }),
+  setCursor: (i) => {
+    const index = Math.max(0, Math.min(i, Math.max(0, get().syllables.length - 1)));
+    if (inPlugin) engine.pluginCursor(index);
+    else set({ cursor: index });
+  },
+  setVibrato: (cents) => {
+    set({ vibrato: cents });
+    if (inPlugin) setParam("vibrato", cents);
+  },
 }));
 
 /** Load the pronouncing dictionary, then re-read the lyrics with it (the cursor stays). */
@@ -173,6 +187,31 @@ function glide(midi: number, text: string): void {
   s.midi = midi;
   s.note = addNote(midi, t, text);
 }
+
+/**
+ * In the plugin Rust plays the notes, so the words at the mouth and the piano roll follow what it
+ * reports. The same syllable at a new pitch is a glide, and keeps its place at the mouth.
+ */
+export function followPluginNote(note: number, sung: number, clock: number): void {
+  const s = sounding;
+  if (note === (s?.midi ?? -1)) return;
+  if (s) s.note.t1 = clock;
+  if (note < 0) {
+    sounding = null;
+    pluginSung = -1;
+    return;
+  }
+  const syl = useSing.getState().syllables[sung] ?? AH;
+  if (s && sung === pluginSung) {
+    s.midi = note;
+    s.note = addNote(note, clock, "~");
+  } else {
+    sounding = { midi: note, syl, tag: 0, note: addNote(note, clock, syl.text) };
+    pluginSung = sung;
+  }
+}
+/** the syllable `sounding` is, in the plugin */
+let pluginSung = -1;
 
 export function singNoteOn(midi: number, velocity: number, body: BodyMix): void {
   stopDemo();

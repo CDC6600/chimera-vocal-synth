@@ -328,7 +328,9 @@ async function main() {
       await mode(m);
       await check(m);
     }
-    await page.locator(".topbar button.primary").click();
+    // the plugin's editor has no Start button: its voice is already running
+    const start = page.locator(".topbar button.primary");
+    if (await start.count()) await start.click();
     await page.waitForSelector(".load", { timeout: 15000 });
     for (const m of modes) {
       await mode(m);

@@ -10,6 +10,8 @@ const root = document.getElementById("root")!;
 async function boot(): Promise<void> {
   try {
     await initChimera();
+    const { mount } = await import("./ui/mount.tsx");
+    await mount(root);
   } catch (err) {
     root.replaceChildren();
     const box = document.createElement("div");
@@ -22,10 +24,7 @@ async function boot(): Promise<void> {
     retry.onclick = () => void boot();
     box.append(msg, retry);
     root.append(box);
-    return;
   }
-  const { mount } = await import("./ui/mount.tsx");
-  mount(root);
 }
 
 void boot();

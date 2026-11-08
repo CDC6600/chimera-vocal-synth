@@ -1,3 +1,4 @@
+import { inPlugin } from "../../audio/pluginBridge.ts";
 import { useStore } from "../store.ts";
 import { useSing, playDemo, stopSinging, soundingSyllable, sungNow, DEMO_SONGS } from "../singing.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -115,6 +116,8 @@ function DemoSongs() {
   const body = useStore((s) => s.body);
   const start = useStore((s) => s.start);
   const demo = useSing((s) => s.demo);
+  // the plugin sings what the host plays
+  if (inPlugin) return null;
   return (
     <div className="demo-songs" role="group" aria-label="Demo songs">
       {DEMO_SONGS.map((s) => (

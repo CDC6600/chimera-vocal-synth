@@ -7,6 +7,7 @@
  * reports once; the main thread may build a new node, which restarts playback state.
  */
 import { writeGestures, writeSteps, fromUtf8, utf8, CONTROL_KEYS } from "../wasm/wire.ts";
+import { TELE_HEADER, TELE_LABELS, decodeTelemetry, telemetryLength } from "./telemetry.ts";
 import type { ToWorklet, FromWorklet, TelemetryMessage } from "./protocol.ts";
 import type { BodyMix, CreatureTelemetry } from "../wasm/types.ts";
 
@@ -23,8 +24,6 @@ type Exports = { memory: WebAssembly.Memory } & Record<string, Fn>;
 
 const ARTIC_KEYS = CONTROL_KEYS.slice(0, 17);
 const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
-/** scalars at the head of the human telemetry block (crates/chimera-wasm/src/lib.rs) */
-const TELE_HEADER = 16;
 /** gestures taken from one schedule message */
 const MAX_GESTURES = 4000;
 
@@ -214,17 +213,11 @@ class ChimeraProcessor extends AudioWorkletProcessor {
   private humanTelemetry(): TelemetryMessage {
     const x = this.x, h = this.h;
     const p = x.engine_telemetry(h);
-    const [phLen, orLen, velumPort, f0, voicing, pLung, outRms, noiseLevel, noiseNode, gate, clock, nArtic, nPh, nOr, nScope, nActive] = new Float64Array(this.mem, p, TELE_HEADER);
-    const all = new Float64Array(this.mem, p, TELE_HEADER + nArtic + 3 * (nPh + nOr) + 2 * nScope);
-    let o = TELE_HEADER;
-    const take = (n: number) => Float32Array.from(all.subarray(o, (o += n)));
-    const artic = take(nArtic), phAreas = take(nPh), orAreas = take(nOr), pressureRms = take(nPh + nOr), flow = take(nPh + nOr), glottalArea = take(nScope), glottalFlow = take(nScope);
-    const labels = new Uint8Array(this.mem, x.engine_tele_labels(h), 4 * 25);
-    const active: string[] = [];
-    for (let i = 0; i < nActive; i++) active.push(fromUtf8(labels.subarray(i * 25 + 1, i * 25 + 1 + labels[i * 25])));
+    const block = new Float64Array(this.mem, p, telemetryLength(new Float64Array(this.mem, p, TELE_HEADER)));
+    const { t, nPh, nOr } = decodeTelemetry(block, new Uint8Array(this.mem, x.engine_tele_labels(h), TELE_LABELS));
     return {
       type: "telemetry",
-      t: { artic, phAreas, orAreas, phLen, orLen, pressureRms, flow, velumPort, glottalArea, glottalFlow, f0, voicing, pLung, outRms, noiseLevel, noiseNode, gate, clock, active },
+      t,
       load: this.load,
       body: this.body(),
       nPh,

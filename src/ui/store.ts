@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { engine } from "../audio/AudioEngine.ts";
+import { inPlugin } from "../audio/pluginBridge.ts";
 import { DEFAULT_SOURCE, type VoiceSource } from "../wasm/engine.ts";
 import { NEUTRAL, restTip, type HumanArtic } from "../wasm/engine.ts";
 import { defaultF0, PRESETS, sameBody, type BodyMix } from "./body.ts";
@@ -100,6 +101,11 @@ export function creatureKeyHz(midi: number, p: Pick<ParamDef, "min" | "max">): n
 }
 
 function updateGate(s: { hold: boolean; heldNotes: number[]; mode: Mode; keyCall: string | null }) {
+  if (inPlugin) {
+    // the keys' breath is Rust's, from whichever keys are down
+    engine.pluginHold(s.hold);
+    return;
+  }
   // keys that trigger calls leave the breath to the call; sung notes breathe by themselves
   const keysBreathe = !(s.mode === "bestiary" && s.keyCall) && s.mode !== "sing";
   engine.gate(s.hold || (keysBreathe && s.heldNotes.length > 0) ? 1 : 0);
@@ -136,6 +142,12 @@ export const useStore = create<State>((set, get) => ({
   setMode: (m) => {
     const prev = get().mode;
     if (prev === m) return;
+    if (inPlugin) {
+      // Rust stops the notes and the breath when the mode changes
+      set({ mode: m, heldNotes: [], hold: false });
+      engine.pluginMode(m);
+      return;
+    }
     session++;
     // notes held across the switch would keep breathing into the other voice
     set({ mode: m, heldNotes: [] });
@@ -293,6 +305,10 @@ export const useStore = create<State>((set, get) => ({
   noteOn: (midi, velocity = 96) => {
     const held = get().heldNotes.filter((n) => n !== midi).concat(midi);
     set({ heldNotes: held });
+    if (inPlugin) {
+      engine.pluginNote(midi, true, velocity);
+      return;
+    }
     const s = get();
     const press = ++pressSerial;
     pressOf.set(midi, press);
@@ -324,6 +340,10 @@ export const useStore = create<State>((set, get) => ({
     pressOf.delete(midi);
     const held = get().heldNotes.filter((n) => n !== midi);
     set({ heldNotes: held });
+    if (inPlugin) {
+      engine.pluginNote(midi, false);
+      return;
+    }
     const s = get();
     if (s.mode === "sing") {
       singNoteOff(midi, s.body);
