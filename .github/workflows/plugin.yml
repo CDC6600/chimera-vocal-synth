@@ -5,12 +5,14 @@ on:
     branches: [main, "t3/**"]
     paths:
       - "crates/**"
-      - "xtask/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "bun.lock"
+      - "vite.config.ts"
       - "Cargo.toml"
       - "Cargo.lock"
-      - "bundler.toml"
-      - ".cargo/**"
-      - "public/data/cmudict.txt.gz"
       - ".github/workflows/plugin.yml"
   pull_request:
   workflow_dispatch:
@@ -23,50 +25,40 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown
+
+      - uses: oven-sh/setup-bun@v2
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Test the plugin crate
-        run: cargo test -p chimera-plugin --release
-
-      - name: Bundle a universal binary (Apple Silicon + Intel)
-        run: cargo xtask bundle-universal chimera-plugin --profile plugin
-
-      - name: Ad-hoc sign
+      - name: Test the plugin and the engine's live path
         run: |
-          codesign --force --deep --sign - target/bundled/CHIMERA.vst3
-          codesign --force --deep --sign - target/bundled/CHIMERA.clap
-          lipo -info target/bundled/CHIMERA.vst3/Contents/MacOS/*
+          cargo test -p chimera-plugin --release
+          cargo test -p chimera --release --test singer_alloc
 
-      - name: Validate the CLAP build
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/cv" && cd "$RUNNER_TEMP/cv"
-          gh release download -R free-audio/clap-validator -p '*macos-universal.zip'
-          unzip -q ./*.zip
-          for t in ./*.tar.gz; do [ -e "$t" ] && tar xzf "$t"; done
-          V=$(find . -type f -name clap-validator -perm -u+x | head -1)
-          # excluded: failures nih-plug's own examples share (state reload with this validator
-          # version), and sample rates below 32 kHz, which the plugin refuses on purpose
-          "$V" validate --only-failed \
-            -x 'state-reproducibility-.*' -x state-invalid-random -x process-varying-sample-rates \
-            "$GITHUB_WORKSPACE/target/bundled/CHIMERA.clap"
+      - name: Build and install the bundles
+        run: crates/chimera-plugin/macos/build.sh --install
 
+      # before validating, so a strict validator can't keep a build from being tried in a real host
       - name: Package
         run: |
           mkdir -p out
-          ditto -c -k --keepParent target/bundled/CHIMERA.vst3 out/CHIMERA.vst3.zip
-          ditto -c -k --keepParent target/bundled/CHIMERA.clap out/CHIMERA.clap.zip
+          for b in clap vst3 component; do
+            ditto -c -k --keepParent "target/bundled/CHIMERA.$b" "out/CHIMERA.$b.zip"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: chimera-plugin-macos
           path: out/*.zip
           if-no-files-found: error
+
+      - name: Validate
+        run: crates/chimera-plugin/macos/validate.sh
