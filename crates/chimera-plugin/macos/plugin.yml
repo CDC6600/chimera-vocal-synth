@@ -1,0 +1,63 @@
+# Copy of .github/workflows/plugin.yml: the agents' GitHub App can't write that folder, so changes
+# are staged here for the owner to paste. It only calls scripts, so it should rarely change.
+name: plugin
+
+on:
+  push:
+    branches: [main, "t3/**"]
+    paths:
+      - "crates/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "bun.lock"
+      - "vite.config.ts"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/plugin.yml"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test the engine's live path and the plugin
+        run: cargo test -p chimera-plugin -p chimera --release --test singer_alloc --lib
+
+      - name: Build and install the bundles
+        run: crates/chimera-plugin/macos/build.sh --install
+
+      - name: Validate
+        run: crates/chimera-plugin/macos/validate.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          for b in clap vst3 component; do
+            ditto -c -k --keepParent "target/bundled/CHIMERA.$b" "out/CHIMERA.$b.zip"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chimera-plugin-macos
+          path: out/*.zip
+          if-no-files-found: error
