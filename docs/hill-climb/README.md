@@ -1,71 +1,72 @@
 # Hill climb: one measured step at a time toward a real voice
 
 An agent improves CHIMERA's voice in small steps. Each run is one experiment: one hypothesis and
-one change, measured against a real singer (the Children's Song Dataset, see
-[csd-comparison.md](../csd-comparison.md)) and guarded so that speech, the tests and real-time
-speed don't get worse. A change is kept only if the judges call it better. Nothing reaches main
-until the owner has listened to the result and merged it.
+one change, measured against real voices and guarded so that nothing else gets worse. The judges
+are real speakers ([speech-comparison.md](../speech-comparison.md)), a real singer
+([csd-comparison.md](../csd-comparison.md)) and Whisper's word error rate. A change is kept only
+if the judges call it better. Nothing reaches main until the owner has listened to the result and
+merged it.
 
 The log of every experiment is [log.md](log.md). Read it before you start.
 
-## The current batch: pronunciation (batch 2)
+## The current batch: real voices (batch 3)
 
-Batch 1 tuned the singing toward the singer. The owner heard the gain, but found it incremental and
-cared more about pronunciation. So batch 2 swaps the roles of the judges:
+Batch 1 tuned the singing toward the singer, and the owner heard it (7 to 0). Batch 2 let Whisper
+decide: its word error rate fell 4 points, and the owner could hardly hear it (now 3, before 1,
+can't tell 4). Whisper's one noisy number doesn't say which sound is wrong. The owner wants
+structural fixes, not a judge loosened until a change passes. So:
 
-- **Speech decides.** A change is kept only if the speech verdict (Whisper's word error rate on the
-  training sentences) is **BETTER**: at least 1.5 points lower than the best run.
+- **The real speakers decide.** A change is kept only if `chimera compare tsp` says **BETTER**
+  against the best run: the training score falls by at least 0.01, and no scored term breaks.
+- **Whisper guards.** Against the batch's baseline, its verdict on the training sentences must
+  not be WORSE (at most 3 points higher). Understanding is what batch 2 earned.
 - **The singer guards.** Against the batch's baseline, no singer guard may break (notes off time,
-  dropped gestures, note MCD, envelope correlation, pitch), and the training score may rise by
-  at most **0.05**. Singing is what batch 1 earned; don't spend it.
-- **Targets**, from what the owner heard (details in log.md, "Listening result"):
-  1. sh, ch and j are too quiet and too low: "sheet" is heard as "feet", and j sounds muted.
-     Every ch and j word in the training sentences fails.
-  2. Stressed vowels are squeezed: the "pu" of "pushes" lasts about 40 ms.
-  3. The p of "sharp" pops. Between the closed lips and the tongue sealing for the following /t/,
-     the tongue squeezes the shut-in air to 11x the lungs' pressure, and the /p/ releases 7 dB
-     above the sentence's loudest vowel (male; the p's of "paper" sit at −6 and −7 dB). Measure
-     it with `cargo test --release -p chimera --test consonant_artifacts -- --ignored
-     --nocapture`; the batch PR un-ignores that test once it passes. Simply absorbing a sealed
-     pocket's wall motion was tried: it halves the pop but breaks the adiabatic-compression test
-     in `airway_adversarial.rs` and the creatures' parity. Look at the articulation instead (how
-     far and how late the tongue moves with the lips shut), or at a real leak path. Male p
-     releases are loud in general (about −5 dB in "apa"; female −13 dB).
-  4. Anything else Whisper's errors point at: the training sentences' wrong words are listed by
-     the speech judge.
-- **Audible artifacts have their own keep rule.** Whisper can't count a pop or a click, and fixing
-  one can't move the word error rate by 1.5 points. A change aimed at an artifact with a target
-  test in `tests/consonant_artifacts.rs` is kept when that test passes (un-ignore it in that
-  commit; this is the one test edit allowed), the speech verdict is not WORSE, and the singer
-  guard above holds. Everything else (bench, tests) as usual. Targets: the pop on "sharp"
-  (`the_p_of_sharp_does_not_pop`, fixed by experiment 16) and the click before /f/ and /v/
-  (`an_f_does_not_click`, found by experiment 18).
-- **Branch:** `t3/pronunciation-hill-climb`, stacked on `t3/consonant-fixes` (the fix for the
-  buzz, and the Bright control).
+  dropped gestures, note MCD, envelope correlation, pitch), and the training score may rise by at
+  most **0.05**.
+- **Fix causes.** Before you change anything, name the physical cause and what value the literature
+  or anatomy gives it, with a source. A constant tuned until a term reads right is not a fix, even
+  when the judge says BETTER. If the cause turns out to be a plain level error, say how you know.
+- **Diagnostics advise.** The report's spectrum, formants, voice, voicing and intonation terms
+  don't decide, and a change doesn't have to improve them. Give their group costs in the log entry
+  when they move. The owner prefers the darker voice: don't brighten the default to please the
+  voice terms.
+- **Pops and clicks** stay with `crates/chimera/tests/consonant_artifacts.rs`, which runs with the
+  tests and must keep passing. The report's worst paired tokens are listening targets: some are the
+  aligner failing on the synth, so check one before acting on it.
+- **Order matters.** A change that lifts every female consonant against her vowels also lifts the
+  ones already too loud (/ð v/), and the verdict breaks a term whose cost rises by more than 0.5.
+  If that blocks a real fix, fix what it trips over first, in its own experiment.
+- **Targets**, from the baseline's report (details in log.md, "Batch 3 baseline"):
+  1. The female sibilants: /ʃ tʃ/ 16–17 dB too quiet, /s z/ centroids at 4.0–4.7 kHz where
+     women's are 7.1–7.4.
+  2. Closures and affricates too short (/k/, /dʒ/, /z/), nasals too long.
+  3. /ð v/ 7–11 dB too loud in both voices.
+  4. Anything else with a large cost in `out/hill/best/tsp/report.md`.
+- **Branch:** `t3/real-voice-hill-climb`.
 
 ## Before you start
 
 - **Where.** Work in this worktree, on the batch's branch (above). Never commit to main.
-- **Data.** The dataset is in `~/datasets/csd/CSD` (fetch it with `tools/fetch-csd.sh`). The
-  speech judge needs `tools/asr/setup.sh` once.
-- **The best run so far** is in `out/hill/best/`: `score.json` and `report.md` (singer),
-  `speech/wer.json` (speech) and `bench.txt` (speed). If it is missing, measure the current
-  commit into `out/hill/best` the same way as below.
+- **Data.** The singer's dataset is in `~/datasets/csd/CSD` (`tools/fetch-csd.sh`). The speakers'
+  is in `~/datasets/tsp` (`tools/tsp/fetch.sh`, and `tools/tsp/setup.sh` once for the aligner).
+  Whisper needs `tools/asr/setup.sh` once.
+- **The best run so far** is in `out/hill/best/`: `tsp/score.json` and `tsp/report.md` (the
+  speakers), `score.json` and `report.md` (singer), `speech/wer.json` (Whisper) and `bench.txt`
+  (speed). If it is missing, measure the current commit into `out/hill/best` the same way as below.
 - **The batch's baseline** is in `out/hill/baseline/`, measured the same way at the commit the
-  batch started from. Speech and speed are judged against it, not against the best run. A
-  small allowance per step would otherwise add up over a batch. Reset it when a batch is
-  merged and the next one starts.
+  batch started from. The guards are judged against it, not against the best run. A small
+  allowance per step would otherwise add up over a batch. Reset it when a batch is merged and the
+  next one starts.
 
 ## One experiment
 
-1. **Pick one hypothesis.** Read the log and the deciding judge's output: for batch 2, the
-   sentences Whisper got wrong in `out/hill/best/speech/wer.json` and the targets above (for a
-   singing batch, `out/hill/best/report.md`, largest costs first). Aim at something the log
-   doesn't show as exhausted, or try a new angle on it. Before you touch code, write down in a
-   sentence or two:
-   - what is physically wrong
+1. **Pick one hypothesis.** Read the log and the deciding judge's output: for batch 3,
+   `out/hill/best/tsp/report.md`, largest costs first, and the targets above (for a singing batch,
+   `out/hill/best/report.md`). Aim at something the log doesn't show as exhausted, or try a new
+   angle on it. Before you touch code, write down in a sentence or two:
+   - what is physically wrong, and your source for what it should be
    - what you will change
-   - which words or terms should move
+   - which terms should move
 2. **Make the change.** Keep it small, readable and motivated by physiology, acoustics or
    phonetics. These are fair game:
    - the voice source (`crates/chimera/src/sources/`)
@@ -102,40 +103,46 @@ cared more about pronunciation. So batch 2 swaps the roles of the judges:
   the log.
 - **The tests.** Don't weaken or delete one to let a change through. A failing test, other than
   a golden fixture (below), means the change is reverted.
-- **The held-out songs and sentences as a guide.** Decide on the training verdict only, and
-  don't choose changes by the held-out scores or read the held-out sentences' transcripts. They
-  are there to show whether a gain carries over.
+- **The held-out songs, sentences and speakers as a guide.** Decide on the training verdict only,
+  and don't choose changes by the held-out scores, read the held-out sentences' transcripts, or
+  read the `held` part of the speakers' `score.json`. They are there to show whether a gain
+  carries over.
 
 ## Measuring
 
 ```sh
 cargo build --release -p chimera-cli
-cargo run --release -p chimera-cli -- compare csd ~/datasets/csd/CSD out/hill/try --against out/hill/baseline/score.json
-~/.cache/chimera-asr/.venv/bin/python tools/asr/speech_wer.py out/hill/try/speech --against out/hill/best/speech/wer.json
+target/release/chimera compare tsp ~/datasets/tsp out/hill/try/tsp --against out/hill/best/tsp/score.json
+~/.cache/chimera-asr/.venv/bin/python tools/asr/speech_wer.py out/hill/try/speech --against out/hill/baseline/speech/wer.json
+target/release/chimera compare csd ~/datasets/csd/CSD out/hill/try --against out/hill/baseline/score.json
 cargo run --release -q -p chimera --example bench > out/hill/try/bench.txt
 ```
 
-These are batch 2's comparisons: speech against the best run (it decides), the singer against the
-batch's baseline (it guards). A singing batch swaps the two `--against` files.
+These are batch 3's comparisons, cheapest first: the speakers against the best run (they decide,
+about 2 minutes), Whisper and the singer against the batch's baseline (they guard, about 1–3
+minutes each). If the speakers' verdict isn't BETTER, you can stop there and revert. A singing
+batch judges the singer against the best run instead.
 
-1. **Singer.** The comparison ends with a verdict: BETTER, WORSE or NO CLEAR CHANGE, and the
-   reasons when worse. `out/hill/try/report.md` has the new score table.
-2. **Speech.** The speech judge ends with BETTER, WORSE or NO CLEAR CHANGE on the training
-   sentences: BETTER from 1.5 points lower, WORSE past 3 points higher. It lists the sentences
-   Whisper got wrong, and reports the held-out sentences, which never decide.
-3. **Speed.** The bench prints the real-time load. Compare its `os=2` line with
+1. **Speakers.** The comparison ends with a verdict: BETTER, WORSE or NO CLEAR CHANGE, and the terms
+   that broke. `out/hill/try/tsp/report.md` has the new score, terms and worst tokens.
+2. **Whisper.** It ends with BETTER, WORSE or NO CLEAR CHANGE on the training sentences: WORSE past
+   3 points higher than the baseline. It lists the sentences it got wrong, and reports the held-out
+   sentences, which never decide. About ±2 points of a small change's total is noise.
+3. **Singer.** The comparison ends with a verdict and the reasons when worse. Read its guards. For a
+   batch that guards the singer, a broken guard fails, and so does a training score more than 0.05
+   above the baseline. `out/hill/try/report.md` has the new score table.
+4. **Speed.** The bench prints the real-time load. Compare its `os=2` line with
    `out/hill/baseline/bench.txt`, the batch's baseline. It is noisy and depends on what else
    the machine is doing, so if it reads slower, rerun it and the baseline's commit back to
    back before calling a change slower.
 
 ## Keep or revert
 
-Keep the change only if all of these hold (batch 2; a singing batch swaps 1 and 2 back, with
-speech judged against the batch's baseline and required to be not WORSE):
+Keep the change only if all of these hold (batch 3):
 
-1. The speech verdict is **BETTER**.
-2. Against the batch's baseline, the singer breaks no guard and its training score rises by at
-   most 0.05.
+1. The speakers' verdict against the best run is **BETTER**.
+2. Against the batch's baseline, Whisper's verdict is not WORSE, the singer breaks no guard, and
+   the singer's training score rises by at most 0.05.
 3. The bench is no more than **10 % slower** than the batch's baseline.
 4. **The tests pass.**
    1. Bless the golden fixtures in `crates/chimera/tests/golden`. They are snapshots of the
@@ -160,9 +167,10 @@ speech judged against the batch's baseline and required to be not WORSE):
 
 1. Commit the engine change (without the fixtures). The message gives the hypothesis, the
    change, and the numbers:
-   - speech word error rate before → after, training and held-out
+   - the speakers' score before → after, training and held-out
+   - Whisper's word error rate before → after, training and held-out
    - training and held-out singer score before → after
-   - the words or terms that moved
+   - the terms that moved
 2. Replace `out/hill/best` with `out/hill/try`:
    `rm -rf out/hill/best && mv out/hill/try out/hill/best`.
 3. Add the log entry, commit it, and push.
@@ -180,9 +188,11 @@ Add one entry at the end of `log.md`:
 ```markdown
 ### N. <short title> (kept | reverted)
 
-- Hypothesis: what was wrong and why the change should fix it.
+- Hypothesis: what was wrong, why the change should fix it, and your source.
 - Change: what changed, in which files; values tried.
-- Speech: word error rate a → b (training), c → d (held-out); the words that moved.
+- Speakers: score a → b (training), c → d (held-out); the terms that moved, and the diagnostics'
+  group costs if they moved.
+- Whisper: word error rate a → b (training), c → d (held-out).
 - Singer: training score a → b, held-out c → d; the terms that moved.
 - Verdict: the reasons, if reverted.
 - Commit: the hash, if kept.
@@ -190,3 +200,6 @@ Add one entry at the end of `log.md`:
 ```
 
 Update "Leads" at the top of the log when an experiment closes a lead or opens a new one.
+
+The repo is public. Commit messages and the log hold no absolute paths, hostnames or links to this
+machine: `git grep -nIE 'ts\.net|beelink|/home/|/tmp/claude'` before you push (this line matches itself).

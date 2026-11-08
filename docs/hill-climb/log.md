@@ -1407,3 +1407,53 @@ No batch uses it yet: whether it decides the next batch, and Whisper guards, is 
   - **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13).
   - **A diagnostic:** the voice lacks 1–4 kHz presence after batch 1 (female 1–2 kHz −16.1 dB re
     0–8 kHz, women −10.8). That is a spectral shape to fix, not a tilt.
+
+## Batch 3: real voices
+
+The owner merged the judge (PR #22) and asked for this batch: `chimera compare tsp` decides, Whisper
+and the singer guard, the female sibilants first. The rules are in the README. The note-MCD guard
+is not widened: the owner called that a band-aid. Resetting the baseline gives it its usual 0.1 dB.
+
+### Batch 3 baseline (commit e939cf7, `out/hill/baseline`, copied to `out/hill/best`)
+
+- **Speakers:** 1.583 training, 1.706 held-out. A real speaker gets 0.277.
+  - Female 2.194: level 1.80, sibilants 3.82, timing 0.96.
+  - Male 0.971: level 0.68, sibilants 1.38, timing 0.85.
+  - Diagnostics, female / male: spectrum 1.33 / 1.64, formants 1.26 / 1.04, voice 0.65 / 1.16,
+    voicing 0.35 / 0.46, intonation 1.26 / 0.86.
+- **Whisper:** 36.75 % training, 44.33 % held-out.
+- **Singer:** 0.587 training, note MCD 8.614 dB (guard 8.714), every other guard as batch 2 left it.
+- **Speed:** `os=2` 24.7 % at load average 11 (18.4 % on a quiet machine, same engine): read it back
+  to back with the baseline's commit.
+- Batch 2's directories are `out/hill/batch2-baseline` and `out/hill/batch2-best`.
+
+### Batch 3 leads
+
+Largest costs first. Costs are the speakers' report, female / male where both.
+
+1. **The teeth source stops at 5 kHz.** `band(5000.0, 1200.0)` in `update_noise`
+   (`voice/human_airway.rs`) is a two-pole low-pass at 5 kHz, so the source falls 12 dB/octave above
+   it. Women's /s/ centres at 7.4 kHz and /z/ at 7.1 (men 5.7, 5.1); the synth's at 4.7, 4.0 (4.2,
+   3.9). Centroid costs: /z/ 7.6 / 3.1, /s/ 4.5 / 2.7, /dʒ/ 3.8. Experiment 20's "Next" argues for a
+   band that follows the jet (f ≈ St·v/D; Shadle 1985, Stevens 1998 ch. 8).
+2. **/ð v/ too loud.** /ð/ −15 / −10 dB re the stressed vowels against −22 / −21; /v/ −13 / −10
+   against −20 / −19. Costs 2.4 / 4.1 and 1.1 / 1.8. Real weak voiced fricatives lose voicing
+   amplitude as the oral pressure rises. Look at their constriction, and at what the voicing does
+   behind it. This also frees the next lead, which lifts them further.
+3. **The female source.** Experiment 13: about 5 dB of her 10 dB fricative gap is her vowels, too
+   loud for her folds. The glottal pulse is 0.17·k² cm², 0.81 of the male's, where her peak flow is
+   about 0.64 of his (Holmberg et al. 1988) and her folds about 0.67 of his length (Hirano). A
+   fold-length body parameter for the pulse, with the output gain re-levelled. Costs: /tʃ/ 10.4, /ʃ/
+   8.8, /h/ 4.7, /t/ 2.6, /d/ 2.1, /s/ 2.1, /g/ 2.0. Watch H1−H2 and note MCD in the singer.
+4. **How turbulence scales.** The sources follow Re² ∝ ΔP·A; Stevens' scaling, ΔP^1.5·A^0.5, lifts
+   narrow jets and small bodies (experiment 13's "Next"). Possibly the rest of the female gap, and the
+   male /ʃ tʃ/ (2.5, 4.3).
+5. **Affricates.** Experiment 15's patch (held /ʃ/ constriction until the folds close) can be retried
+   on top of a level fix. Duration /dʒ/ 3.2 / 4.2, /tʃ/ 2.3 / 1.7.
+6. **Short closures, long nasals.** Duration /k/ 3.4 / 3.6, /z/ 3.4 / 2.2, /ŋ/ 3.4 / 1.8, /n/ 1.1 / 1.9,
+   and stressed vowels before sonorants (female 1.5). Note MFA's convention: read the planner and the
+   report's numbers together (`phonetics/durations.rs`).
+7. **Weak female bursts.** /k/ 3.3, /t/ 2.9: 9 dB weak. They may move with lead 3.
+8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8.
+9. **Still open from batch 2:** the protruded-lip tuck's area jump (ignored test in
+   `geometry_continuity`), and the clipped /ɝ/ of "bird" the owner preferred "before" for.
