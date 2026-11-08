@@ -159,6 +159,7 @@ function loop(): void {
 export async function attachToPlugin(): Promise<void> {
   // for the end-to-end test: what the piano roll holds isn't in the DOM
   (window as unknown as { __chimeraRoll: typeof roll }).__chimeraRoll = roll;
+  document.documentElement.classList.add("plugin-page");
   adopt(await getJson<Snapshot>("/state"));
   analysers = engine.pluginAnalysers();
   requestAnimationFrame(loop);

@@ -28,7 +28,7 @@
  * Without --url it starts its own Vite dev server (build the wasm first: bun run wasm).
  * Screenshots of every failing view are saved under --out.
  */
-import { chromium } from "playwright-core";
+import { chromium, webkit } from "playwright-core";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 
@@ -288,7 +288,8 @@ async function main() {
   if (duet) makeDuet(duetDir);
 
   // WebGL through SwiftShader, for the 3D face
-  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  // --webkit: the engine the plugin's editor runs in on a Mac, whose text and form controls measure differently
+  const browser = process.argv.includes("--webkit") ? await webkit.launch({ headless: true }) : await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   let errors = 0, warnings = 0, views = 0;
   for (const { w, h } of viewports) {
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });

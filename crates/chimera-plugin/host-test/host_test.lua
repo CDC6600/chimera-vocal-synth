@@ -70,6 +70,19 @@ local function state_json(bytes)
   return at, len, bytes:sub(at, at + len - 1)
 end
 
+-- REAPER has no chunk call for an AU: its state is an XML property list in the track's, base64 twice.
+local function au_state(tr)
+  local _, whole = reaper.GetTrackStateChunk(tr, "", false)
+  local block = whole:match("<AU[^\n]*\n(.-)\n>")
+  if not block then return "" end
+  local parts = {}
+  for segment in (block:gsub("%s", "")):gmatch("[%w+/]+=*") do parts[#parts + 1] = b64_decode(segment) end
+  local data = table.concat(parts):match("<key>data</key>%s*<data>(.-)</data>")
+  if not data then return "" end
+  local at, _, text = state_json(b64_decode(data))
+  return at and text or ""
+end
+
 local function replace_between(s, from, to, new)
   local a = s:find(from, 1, true)
   assert(a, "no " .. from)
@@ -113,6 +126,7 @@ local function add_notes(tr, notes, seconds)
     reaper.MIDI_InsertNote(take, false, false, a, b, 0, n[2], 100, true)
   end
   reaper.MIDI_Sort(take)
+  return item
 end
 
 local function render(name, seconds)
@@ -203,29 +217,44 @@ local function ask(step)
 end
 
 local function state_of(tr, fx, format)
+  if format == "AU" then return au_state(tr) end
   local ok, chunk = reaper.TrackFX_GetNamedConfigParm(tr, fx, chunk_name(format))
   if not ok then return "" end
   local at, _, text = state_json(b64_decode(chunk))
   return at and text or ""
 end
 
+local function window_of(state)
+  return state:match('\"window\":\"%[(%d+,%d+)%]') or "?"
+end
+
+-- What someone does with it: open the editor, play, click a mode, drag the grip, and bounce.
 local function editor(format)
   local tr, fx = add_instrument(format)
   if fx < 0 then return end
+  local _, name = reaper.TrackFX_GetFXName(tr, fx, "")
   reaper.TrackFX_Show(tr, fx, 3) -- a floating window
   sleep(5)
-  if format == "AU" then
-    local _, whole = reaper.GetTrackStateChunk(tr, "", false)
-    record({ format = format, case = "au-state", state = (whole:match("<AU.-\n>") or whole):sub(1, 400) })
-  end
-  local function window_of(state)
-    return state:match('\"window\":\"%[(%d+,%d+)%]') or "?"
-  end
   local opened = window_of(state_of(tr, fx, format))
+
+  -- through the sound device, for the page to show live
+  local item = add_notes(tr, { { 0.2, 60, 0.8 }, { 1.2, 64, 0.8 }, { 2.2, 67, 0.8 } }, 4)
+  reaper.OnPlayButton()
+  sleep(2.5)
+  ask("shot-playing-" .. format)
+  reaper.OnStopButton()
+  sleep(1)
+  reaper.DeleteTrackMediaItem(tr, item)
+
   local answered = ask("editor-" .. format)
   sleep(2) -- the grip's size settles once it's let go
   local state = state_of(tr, fx, format)
   record({ format = format, case = "editor", answered = answered, pdc = pdc(tr, fx), mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?", opened = opened, window = window_of(state) })
+
+  -- the mode the click chose, with its example pattern, and the editor open
+  local good, err = pcall(render, format .. "-clicked", 8.5)
+  record({ format = format, case = "clicked", fx_name = name, pdc = pdc(tr, fx), error = good and "" or tostring(err) })
+
   reaper.TrackFX_Show(tr, fx, 2)
   sleep(1)
   reaper.DeleteTrack(tr)

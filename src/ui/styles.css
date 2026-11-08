@@ -2860,12 +2860,24 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ---------- the plugin window's grip */
+/* the plugin's window doesn't scroll, which with a mouse would show a scrollbar beside the grip: the
+   page zooms out to fit instead (docs/plugin.md, "Window size") */
+html.plugin-page,
+html.plugin-page body {
+  overflow: hidden;
+}
+
+/* larger than what's drawn: it shrinks with the page's zoom, and a host's window has a resize corner
+   of its own right beside it */
 .resize-grip {
   position: fixed;
   right: 0;
   bottom: 0;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
   z-index: 40;
   color: var(--blue-mid);
   cursor: nwse-resize;

@@ -32,7 +32,7 @@ echo "::endgroup::"
 echo "::group::pluginval (VST3)"
 gh release download -R Tracktion/pluginval -p 'pluginval_macOS.zip'
 unzip -q pluginval_macOS.zip
-# --skip-gui-tests: a runner has no display session to open the editor in
+# --skip-gui-tests: host-test.sh below opens the editor in a real host
 ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --validate "$bundled/CHIMERA.vst3"
 echo "::endgroup::"
 

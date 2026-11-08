@@ -97,9 +97,9 @@ editor() { # format
   cliclick "c:$tab_x,$tab_y"
   sleep 3
   shot "$fmt-beatbox"
-  # inside the grip, and clear of the host window's own corner just outside it
-  gx=$((x + w - 8))
-  gy=$((y + h - 8))
+  # inside the grip, and clear of the host window's own resize corner
+  gx=$((x + w - 12))
+  gy=$((y + h - 12))
   cliclick "m:$gx,$gy" w:200 "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
   sleep 3
   { echo "$x $y $w $h"; bounds; } >"$out/bounds-$fmt.txt"
@@ -109,6 +109,19 @@ editor() { # format
 
 echo "screen: $(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>&1)"
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet cliclick
+
+# The page in the engine the editor uses here, which Chromium's lint can't stand in for
+echo "--- the plugin's page in WebKit"
+(
+  cd "$root"
+  cargo build -q -p chimera-plugin --release --example ui_harness
+  bunx playwright-core install webkit >/dev/null 2>&1
+  target/release/examples/ui_harness 8549 >/dev/null 2>&1 &
+  harness=$!
+  sleep 2
+  bun tools/layout-lint.ts --plugin --webkit --url http://127.0.0.1:8549/ 2>&1 | tail -40 || true
+  kill "$harness" 2>/dev/null || true
+) || echo "::warning::the WebKit lint didn't run"
 
 curl -fsSL -o "$work/reaper.dmg" "https://www.reaper.fm/files/7.x/reaper${version}_universal.dmg"
 echo "$sha  $work/reaper.dmg" | shasum -a 256 -c -
@@ -149,7 +162,10 @@ run_reaper() { # formats
       [ -e "$marker" ] || continue
       step=${marker##*/at-}
       rm "$marker"
-      case "$step" in editor-*) editor "${step#editor-}" ;; esac
+      case "$step" in
+        editor-*) editor "${step#editor-}" ;;
+        shot-*) shot "${step#shot-}" ;;
+      esac
       touch "$out/go-$step"
     done
     sleep 0.5

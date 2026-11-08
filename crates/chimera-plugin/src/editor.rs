@@ -7,6 +7,7 @@
 //! - Both handlers run on the host's main thread.
 
 use std::ffi::c_void;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::{NonNull, null_mut};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,7 +16,7 @@ use nih_plug::prelude::*;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{class, msg_send};
-use objc2_core_foundation::{CGPoint, CGRect};
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use raw_window_handle::{AppKitWindowHandle, HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
 use wry::dpi::{LogicalPosition, LogicalSize};
 use wry::http::{Request, Response};
@@ -193,6 +194,44 @@ impl ParamHost for WindowHost {
 struct Open {
     bridge: Arc<Bridge>,
     _webview: WebView,
+    /// what the webview sits in when the host's view had no window to build it in
+    holder: Option<Retained<AnyObject>>,
+}
+
+/// An empty view inside a window of its own, for building the webview in. wry panics without a
+/// window (`ns_view.window().unwrap()`), and clap-wrapper's AU hands over its view before the host has
+/// put that in one, in `uiViewForAudioUnit`. wry only needs the window while building, so the view
+/// holding the webview moves across afterwards. It can't be the AU's view that goes in the window:
+/// clap-wrapper closes the editor when that view leaves one.
+struct Holder {
+    view: Retained<AnyObject>,
+    _window: Retained<AnyObject>,
+}
+
+impl Holder {
+    fn new((width, height): (u32, u32)) -> Self {
+        let frame = CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: width as f64, height: height as f64 } };
+        // SAFETY: AppKit classes, on the main thread `spawn` runs on, and these methods take these types
+        unsafe {
+            let window: Retained<AnyObject> = msg_send![class!(NSWindow), new];
+            let view: Retained<AnyObject> = msg_send![class!(NSView), new];
+            let _: () = msg_send![&*view, setFrame: frame];
+            let content: *const AnyObject = msg_send![&*window, contentView];
+            let _: () = msg_send![content, addSubview: &*view];
+            Holder { view, _window: window }
+        }
+    }
+
+    /// Into the host's view, following its size from now on.
+    fn move_into(self, host_view: NonNull<c_void>) -> Retained<AnyObject> {
+        // SAFETY: as above, and the host's view is alive while the editor is open
+        unsafe {
+            let _: () = msg_send![&*self.view, removeFromSuperview];
+            let _: () = msg_send![&*self.view, setAutoresizingMask: FOLLOW_SUPERVIEW];
+            let _: () = msg_send![host_view.as_ptr() as *const AnyObject, addSubview: &*self.view];
+        }
+        self.view
+    }
 }
 
 // SAFETY: nih-plug creates and drops the editor handle on the GUI thread only.
@@ -201,6 +240,10 @@ unsafe impl Send for Open {}
 impl Drop for Open {
     fn drop(&mut self) {
         self.bridge.close();
+        if let Some(holder) = &self.holder {
+            // SAFETY: a view of ours, on the main thread
+            let _: () = unsafe { msg_send![&**holder, removeFromSuperview] };
+        }
     }
 }
 
@@ -222,29 +265,42 @@ impl Editor for WebEditor {
         let commands = bridge.clone();
         let ipc = move |req: Request<String>| commands.command(req.body());
 
-        let built = WebViewBuilder::new()
-            .with_bounds(Rect { position: LogicalPosition::new(0, 0).into(), size: LogicalSize::new(width, height).into() })
-            .with_custom_protocol("chimera".into(), protocol)
-            .with_ipc_handler(ipc)
-            // a link must not replace the plugin's own page
-            .with_navigation_handler(|url| url.starts_with("chimera://"))
-            // the first click on a window the host hasn't focused still works the control under it
-            .with_accept_first_mouse(true)
-            .with_devtools(true)
-            .with_url("chimera://localhost/")
-            .build_as_child(&HostView(view));
+        // SAFETY: an NSView, and `window` returns an NSWindow or nil
+        let window: *const AnyObject = unsafe { msg_send![view.as_ptr() as *const AnyObject, window] };
+        let holder = window.is_null().then(|| Holder::new(size));
+        let parent = holder.as_ref().map_or(view, |h| NonNull::new(Retained::as_ptr(&h.view) as *mut c_void).expect("a view"));
+
+        // a panic in here would take the host down with it: an empty window is better
+        let built = catch_unwind(AssertUnwindSafe(|| {
+            WebViewBuilder::new()
+                .with_bounds(Rect { position: LogicalPosition::new(0, 0).into(), size: LogicalSize::new(width, height).into() })
+                .with_custom_protocol("chimera".into(), protocol)
+                .with_ipc_handler(ipc)
+                // a link must not replace the plugin's own page
+                .with_navigation_handler(|url| url.starts_with("chimera://"))
+                // the first click on a window the host hasn't focused still works the control under it
+                .with_accept_first_mouse(true)
+                .with_devtools(true)
+                .with_url("chimera://localhost/")
+                .build_as_child(&HostView(parent))
+        }));
         match built {
-            Ok(webview) => {
+            Ok(Ok(webview)) => {
                 // wry fixes a child's size; this one follows the host's view whenever that changes
                 let wk = webview.webview();
                 // SAFETY: `setAutoresizingMask:` takes an NSUInteger, on the main thread we're on
                 let _: () = unsafe { msg_send![&*wk, setAutoresizingMask: FOLLOW_SUPERVIEW] };
                 webview_ptr.store(Retained::as_ptr(&wk) as *mut AnyObject, Ordering::Relaxed);
                 let _ = webview.zoom(page_zoom(size));
-                Box::new(Open { bridge, _webview: webview })
+                let holder = holder.map(|h| h.move_into(view));
+                Box::new(Open { bridge, _webview: webview, holder })
             }
-            Err(err) => {
+            Ok(Err(err)) => {
                 nih_error!("CHIMERA: could not create the webview: {err}");
+                Box::new(())
+            }
+            Err(_) => {
+                nih_error!("CHIMERA: creating the webview panicked");
                 Box::new(())
             }
         }
