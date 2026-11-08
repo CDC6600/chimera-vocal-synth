@@ -6,8 +6,20 @@
 
 use crate::airway::network::{AirwayNetwork, Area, NoiseSpec, PortSpec, Tube, TubeSpec};
 use crate::anatomy::human::{HumanArtic, HumanBody, HumanFrame, HumanVocalTract};
-use crate::math::{js_max, js_min, js_round, smoothstep as smooth, sqrt};
+use crate::math::{PI, js_max, js_min, js_round, smoothstep as smooth, sqrt};
 use crate::physics::{C_SOUND, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
+
+/// The teeth source's band tops out at f = St·u/δ, the jet's speed and eddy size where it meets the
+/// teeth. St is of order 1 for a near-circular jet such as /s/ or /ʃ/ (Krane 2005, JASA 118, eq. 13),
+/// and the real speakers' /s/ and /ʃ/ (TSP) start to fall at about this model's v/D. 1.15 is the
+/// value kept of those tried (hill-climb log, experiment 21).
+const TEETH_STROUHAL: f64 = 1.15;
+/// A turbulent mixing layer grows about as δ ≈ 0.17·x (textbook range, Pope 2000, ch. 5), so δ
+/// reaches the jet's diameter about 6 D downstream, where a round jet's core ends.
+const JET_SPREAD: f64 = 0.17;
+/// The band the teeth source's Re² gain was levelled on (Hz).
+const TEETH_LEVEL_HZ: f64 = 5000.0;
+const TEETH_HIGHPASS_HZ: f64 = 1200.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct NoiseGains {
@@ -315,7 +327,18 @@ impl HumanAirway {
                     let teeth_i = n_ph_i + js_min((n_or - 2) as f64, js_max(0.0, js_round((f.teeth_s - self.ph_len) / dx_or))) as isize;
                     let tb = to_branch(teeth_i);
                     if tb >= 0 {
-                        list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt).band(5000.0, 1200.0));
+                        // the band follows the jet as it reaches the teeth: within its core the jet's
+                        // own speed and diameter; past it a wider eddy, slowed as v·D/δ. So /s/ reaches
+                        // higher than /ʃ/, and a stop's narrow first opening is no brighter than the
+                        // channel it opens into. The Re² law sets the source's power, so a wider band
+                        // spreads it thinner.
+                        let a_jet = js_max(self.net.branch_area[src as usize], 1e-6);
+                        let v_jet = self.net.u[src as usize].abs() / a_jet;
+                        let d_jet = 2.0 * sqrt(a_jet / PI);
+                        let eddy = js_max(d_jet, JET_SPREAD * (f.teeth_s - s_min));
+                        let top = TEETH_STROUHAL * (v_jet * d_jet / (eddy * eddy));
+                        let spread = sqrt(TEETH_LEVEL_HZ / js_max(top, TEETH_HIGHPASS_HZ));
+                        list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt * spread).band(top, TEETH_HIGHPASS_HZ));
                     }
                 }
             }
