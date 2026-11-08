@@ -58,6 +58,11 @@ export function gestureOpen(id: string): boolean {
   return gestures.has(id);
 }
 
+/** The window's grip. Rust reads the pointer itself: the page's coordinates change with its zoom. */
+export function grip(action: "begin" | "move" | "reset"): void {
+  ipc({ type: "grip", action });
+}
+
 /** Split a message for the worklet into host parameters and what the project saves. */
 export function sendToPlugin(m: ToWorklet): void {
   switch (m.type) {

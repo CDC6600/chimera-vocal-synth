@@ -2858,3 +2858,22 @@ input[type="range"]::-moz-range-thumb {
     padding: 7px 8px 0;
   }
 }
+
+/* ---------- the plugin window's grip */
+.resize-grip {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 40;
+  color: var(--blue-mid);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.resize-grip:hover {
+  color: var(--white);
+}
+.resize-grip svg {
+  display: block;
+}

@@ -186,22 +186,30 @@ still use it.
 
 ## Window size
 
-The window opens at the size the project saved (`#[persist = "window"]`, 1280 x 760 at first) and can
-be anything from 1024 x 640 to 3840 x 2160. The page's layout follows its viewport, as on the website.
+The window opens at the size the project saved (`#[persist = "window"]`, 1280 x 800 at first) and can
+be anything from 720 x 500 to 3840 x 2160.
+
+- **Larger than the layout needs:** the screens take the room, as on the website.
+- **Smaller than `LAYOUT_MIN` (1120 x 800):** the page is zoomed out (`WKWebView.pageZoom`) until it
+  fits, so the layout stays the same, smaller. The website's own answer to a narrow window is a stacked
+  page that scrolls, and in a plugin what's below the fold might as well not be there. The layout lint's
+  `--plugin` mode fails if the page scrolls at `LAYOUT_MIN`.
 
 nih-plug answers `can_resize` with false, so a host can't drag the border. Patching that means forking
-nih-plug, so the window has its own grip in the corner, as many plugins do: while dragging, the page
-sends `resize { w, h }` once per frame, and Rust clamps it, stores it and calls
-`GuiContext::request_resize`.
+nih-plug, so the window has its own grip in the corner, as many plugins do. While dragging, the page
+tells Rust the pointer moved, at most once a frame, and Rust reads where to (`NSEvent.mouseLocation`):
+the page's own coordinates change with its zoom, which changes during the drag. Double-clicking the grip
+goes back to the first size.
 
-- **The return value can't be trusted.** clap-wrapper's VST3 layer tests `!resizeView(...)`, and
+- **`request_resize`'s answer can't be trusted.** clap-wrapper's VST3 layer tests `!resizeView(...)`, and
   `kResultOk` is 0, so success returns false and failure true. Its AU layer sets the frame and always
   returns false. So Rust reads the host view's frame afterwards: if it matches, the size stands; if
   not and the call said true (a CLAP host may resize later), the size stands too; otherwise the stored
   size goes back to the frame's.
 - **The webview follows the host's view** through its autoresizing mask (wry fixes a child's size, so
   the editor changes the mask after building it). Nothing calls `set_bounds`: a host that resizes
-  after the call returns would grow the webview twice.
+  after the call returns would grow the webview twice. The zoom follows the view's real size too, read
+  at every poll.
 
 ## Speak
 

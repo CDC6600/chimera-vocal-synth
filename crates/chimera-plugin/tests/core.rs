@@ -465,3 +465,20 @@ fn pitch_bend_moves_the_voice_and_centres() {
     let semitones = 12.0 * (up / plain).log2();
     assert!((semitones - 2.0).abs() < 0.5, "a full bend should be about two semitones, got {semitones}");
 }
+
+/// A window smaller than the layout shows the whole layout, zoomed out, whichever side is short.
+#[test]
+fn a_small_window_zooms_out_and_a_large_one_doesnt() {
+    use chimera_plugin::bridge::{LAYOUT_MIN, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, page_zoom};
+    assert_eq!(page_zoom(WINDOW_DEFAULT), 1.0, "the first size needs no zoom");
+    assert_eq!(page_zoom(WINDOW_MAX), 1.0);
+    assert_eq!(page_zoom((LAYOUT_MIN.0 / 2, LAYOUT_MIN.1 * 2)), 0.5);
+    assert_eq!(page_zoom((LAYOUT_MIN.0 * 2, LAYOUT_MIN.1 / 2)), 0.5);
+    let z = page_zoom(WINDOW_MIN);
+    assert!(z > 0.5 && z < 1.0, "the smallest window stays legible: {z}");
+    // what's laid out never needs less room than the layout's
+    for (w, h) in [WINDOW_MIN, (900, 700), (2000, 600), (1000, 1400)] {
+        let z = page_zoom((w, h));
+        assert!(w as f64 / z >= LAYOUT_MIN.0 as f64 - 1e-9 && h as f64 / z >= LAYOUT_MIN.1 as f64 - 1e-9);
+    }
+}

@@ -48,6 +48,15 @@ export const VIEWPORTS: { w: number; h: number }[] = [
   { w: 2560, h: 1440 },
 ];
 const MODES = ["play", "speak", "sing", "bestiary", "beatbox"] as const;
+/** with `--plugin` and `--url` of the UI harness: the window sizes and modes the plugin has */
+const PLUGIN_VIEWPORTS: { w: number; h: number }[] = [
+  { w: 1120, h: 800 }, // LAYOUT_MIN in crates/chimera-plugin/src/bridge.rs: a smaller window is this, zoomed out
+  { w: 1280, h: 800 }, // the first size
+  { w: 1440, h: 900 },
+  { w: 1920, h: 1080 },
+  { w: 2560, h: 1440 },
+];
+const PLUGIN_MODES = ["sing", "play"] as const;
 
 interface Problem {
   kind: string;
@@ -270,9 +279,11 @@ async function main() {
   }
   const only = arg("only");
   const onlyMode = arg("mode");
-  const viewports = only ? VIEWPORTS.filter((v) => `${v.w}x${v.h}` === only).concat(VIEWPORTS.some((v) => `${v.w}x${v.h}` === only) ? [] : [{ w: +only.split("x")[0], h: +only.split("x")[1] }]) : VIEWPORTS;
-  const duet = !onlyMode || onlyMode === "duet";
-  const modes = onlyMode ? (onlyMode === "duet" ? [] : [onlyMode]) : MODES;
+  const plugin = process.argv.includes("--plugin");
+  const sizes = plugin ? PLUGIN_VIEWPORTS : VIEWPORTS;
+  const viewports = only ? sizes.filter((v) => `${v.w}x${v.h}` === only).concat(sizes.some((v) => `${v.w}x${v.h}` === only) ? [] : [{ w: +only.split("x")[0], h: +only.split("x")[1] }]) : sizes;
+  const duet = !plugin && (!onlyMode || onlyMode === "duet");
+  const modes = onlyMode ? (onlyMode === "duet" ? [] : [onlyMode]) : plugin ? PLUGIN_MODES : MODES;
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
@@ -291,6 +302,11 @@ async function main() {
       await page.waitForTimeout(wait);
       views++;
       const problems = (await page.evaluate(inspect)) as Problem[];
+      // a plugin's window doesn't scroll: what's below the fold might as well not be there
+      if (plugin) {
+        const over = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+        if (over > 0) problems.push({ kind: "page-scroll", detail: `${over}px taller than the window` });
+      }
       const errs = problems.filter((p) => !p.warn), warns = problems.filter((p) => p.warn);
       errors += errs.length;
       warnings += warns.length;
@@ -323,7 +339,9 @@ async function main() {
       await page.close();
       continue;
     }
-    await page.goto(url, { waitUntil: "networkidle" });
+    // the plugin's page polls every frame, so its network is never idle
+    await page.goto(url, { waitUntil: plugin ? "load" : "networkidle" });
+    await page.waitForSelector(".topbar", { timeout: 15000 });
     for (const m of modes) {
       await mode(m);
       await check(m);

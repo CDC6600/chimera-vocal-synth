@@ -247,6 +247,8 @@ dependencies = [
  "clap-wrapper",
  "flate2",
  "nih_plug",
+ "objc2",
+ "objc2-core-foundation",
  "raw-window-handle 0.6.2",
  "serde",
  "serde_json",

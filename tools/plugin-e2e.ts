@@ -28,8 +28,8 @@ for (let i = 0; i < 100; i++) {
 const host = (path: string, body: string | number = "") => fetch(`${base}/test/${path}`, { method: "POST", body: String(body) });
 
 const browser = await chromium.launch({ headless: true, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
-// the editor's size in crates/chimera-plugin/src/editor.rs
-const page = await browser.newPage({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 });
+// the window's first size: WINDOW_DEFAULT in crates/chimera-plugin/src/bridge.rs
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const errors: string[] = [];
 page.on("console", (m) => {
   if (m.type() === "error") errors.push(m.text());
@@ -222,6 +222,19 @@ try {
   const after = await state();
   check("and sent nothing back", after.settings.lyrics === "la la land" && after.settings.body.child === 1 && after.settings.artic.jaw === 1.5 && after.settings.f0 === 300, after.settings);
   await reopened.close();
+
+  // ---- the window's grip
+  const grip = page.locator(".resize-grip");
+  const g = (await grip.boundingBox())!;
+  await page.mouse.move(g.x + 8, g.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 40, g.y + 30, { steps: 4 });
+  await page.mouse.up();
+  await until("dragging the grip tells Rust", async () => /grip Begin\ngrip Move/.test(await (await host("gestures")).text()));
+  await grip.dblclick();
+  await until("double-clicking it asks for the first size", async () => (await (await host("gestures")).text()).includes("grip Reset"));
+  const scrolls = await page.evaluate(() => document.documentElement.scrollHeight > innerHeight);
+  check("the window's first size doesn't scroll", !scrolls);
 
   // ---- the window closes with a key held and a gesture open
   const key2 = page.locator(".key.white").nth(5);

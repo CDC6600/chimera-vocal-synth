@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use chimera::phonetics::syllables::lyrics_to_syllables;
 use chimera_plugin::ChimeraParams;
-use chimera_plugin::bridge::{Bridge, ParamHost};
+use chimera_plugin::bridge::{Bridge, GripAction, ParamHost};
 use chimera_plugin::core::{Core, Event, Settings, Shared, Transport, VoiceParams};
 use chimera_plugin::g2p;
 use nih_plug::prelude::Params;
@@ -18,7 +18,7 @@ use nih_plug::prelude::Params;
 /// Stands in for a host: parameter values, kept here, and a log the test can read.
 struct FakeHost {
     values: Arc<Mutex<HashMap<String, f32>>>,
-    /// the gestures seen, as "begin id" / "end id"
+    /// what the host saw, as "begin id", "end id" or "grip Move"
     log: Arc<Mutex<Vec<String>>>,
 }
 
@@ -34,6 +34,9 @@ impl ParamHost for FakeHost {
     }
     fn values(&self) -> Vec<(String, f32)> {
         self.values.lock().unwrap().iter().map(|(k, v)| (k.clone(), *v)).collect()
+    }
+    fn grip(&self, action: GripAction) {
+        self.log.lock().unwrap().push(format!("grip {action:?}"));
     }
 }
 

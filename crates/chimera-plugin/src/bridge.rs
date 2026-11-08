@@ -28,18 +28,46 @@ const NOT_BUILT: &str = "<!doctype html><body style='background:#000;color:#fff;
 /// then the `TELE_LABELS` bytes of active labels. Keep in step with `src/ui/pluginState.ts`.
 pub const POLL_HEADER: usize = 14;
 
-/// How the page's parameter changes reach the host, and their current values.
+/// The editor window's first size, and the limits of its grip (points).
+pub const WINDOW_DEFAULT: (u32, u32) = (1280, 800);
+pub const WINDOW_MIN: (u32, u32) = (720, 500);
+pub const WINDOW_MAX: (u32, u32) = (3840, 2160);
+/// The smallest viewport the page's layout fits without scrolling. A window smaller than this shows
+/// the same layout scaled down. Checked by `tools/layout-lint.ts --plugin`.
+pub const LAYOUT_MIN: (u32, u32) = (1120, 800);
+
+/// The page zoom for a window of this size.
+pub fn page_zoom((width, height): (u32, u32)) -> f64 {
+    (width as f64 / LAYOUT_MIN.0 as f64).min(height as f64 / LAYOUT_MIN.1 as f64).min(1.0)
+}
+
+/// What the window's grip did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GripAction {
+    Begin,
+    /// the pointer moved: the editor reads where to
+    Move,
+    /// back to the first size
+    Reset,
+}
+
+/// How the page's parameter changes and the window's grip reach the host, and the parameters' values.
 pub trait ParamHost: Send + Sync {
     fn begin(&self, id: &str);
     fn set(&self, id: &str, plain: f32);
     fn end(&self, id: &str);
     /// Every parameter's plain value (a bool as 0 or 1).
     fn values(&self) -> Vec<(String, f32)>;
+    /// The editor needs the host's view for this: see `editor.rs`.
+    fn grip(&self, _action: GripAction) {}
+    /// Called for every poll, on the main thread.
+    fn tick(&self) {}
 }
 
 /// [`ParamHost`] through nih-plug's connection to the host.
 pub struct GuiHost {
-    context: Arc<dyn GuiContext>,
+    pub context: Arc<dyn GuiContext>,
     map: HashMap<String, ParamPtr>,
     /// `map`'s pointers point into this
     _params: Arc<ChimeraParams>,
@@ -101,6 +129,7 @@ enum Command {
     /// a host parameter moved (the gesture begins with its first value)
     Param { id: String, value: f32 },
     ParamEnd { id: String },
+    Grip { action: GripAction },
 }
 
 /// A response to a request.
@@ -172,6 +201,7 @@ impl Bridge {
     }
 
     fn poll(&self) -> Vec<u8> {
+        self.host.tick();
         let s = &self.shared;
         s.watch();
         let mut frame = s.telemetry.lock().unwrap_or_else(|e| e.into_inner());
@@ -231,6 +261,8 @@ impl Bridge {
                     self.host.end(&id);
                 }
             }
+            // the host's too; it isn't part of a project, so a restore doesn't make it stale
+            Command::Grip { action } => self.host.grip(action),
             command => {
                 let _together = self.shared.transaction();
                 // checked again now that no restore can be under way
@@ -306,7 +338,7 @@ impl Bridge {
                 shared.edit(|p| p.source.merge(&values));
             }
             Command::Hold { on } => shared.edit(|p| p.hold = Some(on)),
-            Command::Param { .. } | Command::ParamEnd { .. } => {}
+            Command::Param { .. } | Command::ParamEnd { .. } | Command::Grip { .. } => {}
         }
     }
 

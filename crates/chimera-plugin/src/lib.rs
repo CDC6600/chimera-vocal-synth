@@ -67,6 +67,9 @@ pub struct ChimeraParams {
     pub restart: BoolParam,
     #[persist = "settings"]
     pub settings: RwLock<Settings>,
+    /// the editor window's size (points)
+    #[persist = "window"]
+    pub window: RwLock<(u32, u32)>,
 }
 
 fn percent(name: &str, default: f64) -> FloatParam {
@@ -90,6 +93,7 @@ impl Default for ChimeraParams {
             ring: percent("Ring", 0.0),
             restart: BoolParam::new("Restart Lyrics On Play", true),
             settings: RwLock::new(Settings::default()),
+            window: RwLock::new(bridge::WINDOW_DEFAULT),
         }
     }
 }

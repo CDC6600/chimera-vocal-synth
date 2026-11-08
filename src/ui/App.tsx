@@ -21,6 +21,7 @@ import { playDemo, DEMO_SONGS } from "./singing.ts";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
 import { BodyPad } from "./components/BodyPad.tsx";
+import { ResizeGrip } from "./components/ResizeGrip.tsx";
 import { bodyLabel, presetOf, PRESETS } from "./body.ts";
 
 // three.js only loads when the 3D view is first shown
@@ -250,6 +251,7 @@ function Wall() {
         <LeftScreen />
         {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}
       </main>
+      {inPlugin && <ResizeGrip />}
     </div>
   );
 }
