@@ -8,8 +8,8 @@ AU on macOS, under the repo's MIT licence.
 
 ## What the MVP is
 
-- **Modes:** Sing and Play. Speak, Bestiary and Beatbox stay out of the plugin for now, because
-  each needs its own MIDI mapping and persisted state.
+- **Modes:** Sing, Play, Speak and Beatbox. Bestiary stays out for now: it needs its own MIDI mapping
+  and persisted state.
 - **No demo songs and no Web MIDI.** The host gives the MIDI.
 - **The sound lives in Rust.** A plugin's window is usually closed while it plays, so nothing the
   sound depends on may live in the page: lyrics, cursor, body, posture, and every note decision.
@@ -182,16 +182,115 @@ a restored project. After that:
 `AudioEngine` keeps its interface: `send()` goes to the bridge instead of the worklet port. In plugin
 mode `store.ts` and `singing.ts` send notes and lyrics to Rust and take the syllables, the cursor and
 the piano roll's notes from it. The page's wasm stays: the anatomy model, geometry and vowel map
-still use it. The spectrum shows the airway's transfer function without the live harmonics until the
-analyser arrives.
+still use it.
+
+## Window size
+
+The window opens at the size the project saved (`#[persist = "window"]`, 1280 x 760 at first) and can
+be anything from 1024 x 640 to 3840 x 2160. The page's layout follows its viewport, as on the website.
+
+nih-plug answers `can_resize` with false, so a host can't drag the border. Patching that means forking
+nih-plug, so the window has its own grip in the corner, as many plugins do: while dragging, the page
+sends `resize { w, h }` once per frame, and Rust clamps it, stores it and calls
+`GuiContext::request_resize`.
+
+- **The return value can't be trusted.** clap-wrapper's VST3 layer tests `!resizeView(...)`, and
+  `kResultOk` is 0, so success returns false and failure true. Its AU layer sets the frame and always
+  returns false. So Rust reads the host view's frame afterwards: if it matches, the size stands; if
+  not and the call said true (a CLAP host may resize later), the size stands too; otherwise the stored
+  size goes back to the frame's.
+- **The webview follows the host's view** through its autoresizing mask (wry fixes a child's size, so
+  the editor changes the mask after building it). Nothing calls `set_bounds`: a host that resizes
+  after the call returns would grow the webview twice.
+
+## Speak
+
+Each note says the next line, as a note in Sing sings the next syllable. A line is what's between
+line breaks, and punctuation inside one makes phrases with pauses, as on the website.
+
+- **Lines are planned on the main thread**, when the text, the IPA toggle, the rate or the body
+  changes, and at `initialize`: `to_phrases` (or the IPA tokenizer) then `plan_phrases`, for
+  `default_f0(body)`. The audio thread gets a `Vec<Vec<Gesture>>` through `Pending`, and hands the old
+  one back through a `retired` slot. A note only calls `Engine::schedule`, which copies into reserved
+  buffers, so it allocates nothing. A line is cut at `MAX_SCHEDULE` (4000) gestures, about a minute.
+- **The key transposes, like a sampler.** C4 (60) speaks at the body's natural pitch; each semitone
+  moves the whole contour through `HumanVoice::bend`, on top of the pitch wheel. A plan isn't rebuilt
+  per note. Velocity does nothing here.
+- **A note is a one-shot.** Its release does nothing. A new note cuts the line sounding (`replace`).
+- Transport start or a loop goes back to the *start line* if Restart Lyrics On Play is on, and a stop
+  stops the speech. Picking a line while stopped sets the start line.
+- The Speak button says the next line at natural pitch. The consonant chart's pads plan one `ˈɑpɑ` on
+  the main thread and send it as a one-shot through `Pending` (latest wins).
+
+The page takes what's being said from Rust: `/poll` carries a spoken serial, the line and the voice
+clock of its time 0; when the serial changes the page fetches `/speech/<line>` (the phrases and the
+plan), and the score, the sound readout and the words at the mouth work as they do on the website.
+
+## The live spectrum
+
+The audio thread copies each block's output into a bounded sample ring in `Shared`, by `try_lock` and
+only while someone is watching; a busy lock loses a block of display, no more. `/poll` drains it. A
+small class on the page has the part of `AnalyserNode` that `SpectrumView` and `Spectrogram` use
+(Blackman window, FFT, smoothing, decibels), so those views don't change.
+
+## Beatbox
+
+**Keeping time.** Every mouth sound needs 100 to 174 ms of set-up before its hit (measured: kick 137,
+snare 130, hat 106, click 174, for every body), so a hit started when its note arrives lands late and
+unevenly. In Beatbox mode the plugin reports `BEAT_LATENCY` = 180 ms and puts each hit exactly that far
+after the point on the host's timeline that asks for it; the host's delay compensation does the rest.
+This makes the hard cases simple:
+
+- The first hit after pressing play has its full set-up, and lands on the grid.
+- A step is scheduled when the transport reaches it, not predicted ahead, so a loop or a seek leaves
+  nothing to cancel: hits in flight belong to the time before the jump. Steps never double or go
+  missing on a continuous transport, because a step number is kept and only a real jump (more than
+  5 ms of beats from where the last block ended) looks it up again.
+- A tempo change needs no anchor: each block uses the host's position and tempo.
+
+The latency is 0 in every other mode, because live playing can't take it. So changing into or out of
+Beatbox while the host is running asks it to restart the plugin (nih-plug's `set_latency_samples`):
+`initialize` rebuilds `Core` from `Settings`, and the page adopts the new revision. A short gap at a
+mode change is accepted. **Known limit:** clap-wrapper's AU layer ignores that restart, so an AU host
+learns the latency only when it next activates the plugin. A host without delay compensation hears
+everything 180 ms late.
+
+**The sequencer** follows the host while it is playing and gives a position and tempo (Follow Host in
+the transport panel, on by default, saved). The pattern's step number comes from the host's position,
+so it stays in phase with the bars, and swing delays the odd steps as before. `BeatPlayer` gets a
+second way in beside the voice-clock `tick`: `follow`, which schedules the steps reached in this block.
+While the host is stopped, the Play Beat button runs the pattern on the voice clock at its own tempo,
+as on the website; a host starting takes over from it.
+
+**Notes.** Host notes below C4 (60) are pads, on the General MIDI drum map so drum clips play as they
+are: 35, 36 kick; 37 rimshot; 38 snare; 39 click; 40 inward snare; 41, 43, 45 lip pop; 42, 44 hi-hat;
+46 open hat; 49, 51, 52, 53, 55, 57, 59 crash. Others below 60 are ignored. C4 and up hum, two octaves
+down, so a bass line sits on the keyboard's middle. Velocity sets the accent. The on-screen keys hum at
+the pitch they show, and the pads have their own buttons.
+
+While the host is playing, a note's hit goes `BEAT_LATENCY` after the note, on the grid. While it's
+stopped, it goes as soon as the mouth can make it (the website's `beat_hit`), because someone is
+auditioning. The hum is the same sound the sequencer uses, built open-ended with a tag; its release is
+`GestureScore::release` at the matching time, and it's monophonic, falling back to the newest key held.
+
+**Close mic.** The website's chain is Web Audio nodes (low shelf +9 dB at 120 Hz, peak +3 dB at 3.5 kHz,
+compressor at -28 dB, 5:1, make-up), which a plugin doesn't have, and much of a beatbox's weight comes
+from it. `CloseMic` is the same chain in Rust on the audio thread, per sample and allocation-free, used
+only in Beatbox with Close Mic on (saved, on by default). It isn't bit-identical to the browser's.
+
+**State.** `Settings` gains `speech { text, ipa, rate, startLine }` and `beat { steps, bpm, swing,
+preset, mic, follow }`, each with defaults, so older projects load. `playing` isn't saved. Entering
+Beatbox sets the ready posture as the website does, sent by the page before the mode so that a restart
+can't separate them.
 
 ## Testing without a Mac or a DAW
 
 - `Core` has no nih-plug types, so its tests run anywhere: MIDI to audio, allocation, block-size
-  independence, flush-to-zero, state restore, voice swap, note ownership, transport.
+  independence, flush-to-zero, state restore, voice swap, note ownership, transport, spoken lines,
+  beat steps against a simulated host transport (loops, seeks, tempo changes), the drum map, close mic.
 - `examples/ui_harness.rs` serves the same `/poll`, `/state` and IPC over HTTP from a real `Core` on
   a timer. A Playwright script drives the UI against it in headless Chromium, and the layout lint
-  checks the plugin's window size.
+  checks the plugin's window sizes.
 - CI on macOS builds all three bundles and runs the validators. Only the owner's FL Studio tests the
   webview itself, so a build reaches it as early as the full bundle can load: whether module scripts
   and wasm work over the custom scheme in WKWebView is the largest unknown left.
@@ -209,14 +308,12 @@ if a dependency has no licence, or only a GPL one.
   is cheap to write, but a sleeping voice freezes glottal phase, vibrato and noise, so the decision
   must not depend on the window being open or on wall-clock time, and the display needs a clock that
   keeps moving. FL Studio's Smart Disable covers much of this meanwhile.
-- **The spectrum's live harmonics:** a sample ring from the audio thread, and a small class with
-  `AnalyserNode`'s window, smoothing and decibels doing its FFT in JS.
-- **Lookahead.** A vowel should land on the beat with its consonants ahead of it. That needs
-  reported latency and delayed events, and live playing wouldn't want it, so it would be a toggle.
+- **Lookahead in Sing.** A vowel should land on the beat with its consonants ahead of it. Beatbox's
+  reported latency shows how; live playing wouldn't want it, so in Sing it would be a toggle.
 - Windows (WebView2 through wry). Most FL Studio users are on Windows.
-- Speak, Bestiary and Beatbox. Host tempo sync for Beatbox.
+- Bestiary.
 - Sustain pedal, mod wheel and other controllers.
-- A window size selector (nih-plug can't be resized by the host, only ask to resize itself).
+- Dragging the host's window border (needs `can_resize` in nih-plug: a fork or an upstream change).
 - A full DSP reset (see Determinism).
 - Signing and notarisation.
 - One `Singer` for the browser too, replacing the TypeScript controller.
