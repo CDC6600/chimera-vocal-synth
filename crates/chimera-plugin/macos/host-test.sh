@@ -36,6 +36,22 @@ bounds() {
   end tell' 2>&1 || true
 }
 
+# REAPER's first-run questions come before it runs any script. Answers one, and says what it asked.
+dialogs() {
+  osascript -e 'tell application "System Events" to tell process "REAPER"
+    repeat with w in windows
+      set names to name of buttons of w
+      repeat with answer in {"No", "Still Evaluating", "Still evaluating", "I agree", "OK"}
+        if names contains (answer as text) then
+          set said to value of static texts of w
+          click button (answer as text) of w
+          return (answer as text) & " to: " & (said as text)
+        end if
+      end repeat
+    end repeat
+  end tell' 2>/dev/null || true
+}
+
 # Where these are in the page at 1280x800: tools/plugin-e2e.ts's harness, measured.
 BEATBOX_X=624
 BEATBOX_Y=26
@@ -66,7 +82,7 @@ editor() { # format
   shot "$fmt-resized"
 }
 
-system_profiler SPDisplaysDataType SPAudioDataType 2>/dev/null | grep -vE '^\s*$' | head -40 || true
+echo "screen: $(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>&1)"
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet cliclick
 
 curl -fsSL -o "$work/reaper.dmg" "https://www.reaper.fm/files/7.x/reaper${version}_universal.dmg"
@@ -83,8 +99,9 @@ env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS=CLAP,VST3,AU CHIMER
   "$work/REAPER.app/Contents/MacOS/REAPER" -nosplash >"$out/reaper.log" 2>&1 &
 pid=$!
 
-deadline=$((SECONDS + 600))
+deadline=$((SECONDS + 420))
 started=0
+first_shot=$((SECONDS + 60))
 while [ ! -e "$out/finished" ]; do
   if [ "$SECONDS" -gt "$deadline" ]; then
     echo "::warning::REAPER didn't finish in time"
@@ -94,7 +111,9 @@ while [ ! -e "$out/finished" ]; do
     echo "::warning::REAPER stopped by itself"
     break
   fi
-  if [ "$started" = 0 ] && [ "$SECONDS" -gt 20 ]; then
+  answered=$(dialogs)
+  [ -z "$answered" ] || echo "answered $answered"
+  if [ "$started" = 0 ] && [ "$SECONDS" -gt "$first_shot" ]; then
     started=1
     shot start
   fi
