@@ -187,10 +187,12 @@ analyser arrives.
   webview itself, so a build reaches it as early as the full bundle can load: whether module scripts
   and wasm work over the custom scheme in WKWebView is the largest unknown left.
 
-## Before anything is shared publicly
+## Licences
 
-Licence notices for every dependency in the binaries, in the download. Until then builds are for
-testing only.
+Every bundle carries `LICENSE` and `THIRD-PARTY-LICENSES.txt` in `Contents/Resources`, generated at
+build time by `tools/third-party-notices.ts` from what the build really uses: the plugin crate's
+dependencies, what `clap-wrapper` compiles, the page's JavaScript and the dictionary. The script fails
+if a dependency has no licence, or only a GPL one.
 
 ## Later
 

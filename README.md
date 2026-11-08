@@ -32,6 +32,19 @@ bun run test       # wasm build, cargo test --workspace, bun test tests
 The AudioWorklet needs a secure context, so open it on localhost or over HTTPS (for example
 `tailscale serve`). Vercel builds it with `vercel.json`.
 
+## As a plugin
+
+Early: a CLAP, VST3 and AU instrument for macOS, with the same UI in a webview. MIDI notes sing the
+lyrics, one syllable per note, or play the posture you've set (Sing and Play modes). Lyrics, body and
+voice settings save with the project, and the voice parameters can be automated. On a Mac, with Xcode's
+command line tools as well as the above:
+
+```sh
+crates/chimera-plugin/macos/build.sh --install
+```
+
+Builds aren't signed yet. See [docs/plugin.md](docs/plugin.md).
+
 Offline renders and measurement:
 
 ```sh

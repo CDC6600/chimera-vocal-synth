@@ -25,17 +25,21 @@ done
 lipo -create "${libs[@]}" -output target/libchimera_plugin.universal.dylib
 lipo -info target/libchimera_plugin.universal.dylib
 
+mkdir -p "$out"
+bun tools/third-party-notices.ts > "$out/THIRD-PARTY-LICENSES.txt"
+
 bundle() { # extension, Info.plist template
   local dir="$out/CHIMERA.$1"
   rm -rf "$dir"
   mkdir -p "$dir/Contents/MacOS"
+  mkdir -p "$dir/Contents/Resources"
   cp target/libchimera_plugin.universal.dylib "$dir/Contents/MacOS/CHIMERA"
+  cp LICENSE "$out/THIRD-PARTY-LICENSES.txt" "$dir/Contents/Resources/"
   sed "s/@VERSION@/$version/g" "$here/$2" > "$dir/Contents/Info.plist"
   printf 'BNDL????' > "$dir/Contents/PkgInfo"
   codesign --force --sign - "$dir"
   plutil -lint "$dir/Contents/Info.plist"
 }
-mkdir -p "$out"
 bundle clap Info.clap.plist
 bundle vst3 Info.vst3.plist
 bundle component Info.component.plist

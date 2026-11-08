@@ -18,6 +18,7 @@ and the CLI) under a React UI. See the README.
 
 - `crates/chimera/`: the engine (no I/O). `crates/chimera-wasm/`: the browser's C ABI.
   `crates/chimera-cli/`: `chimera render | compare csd | diagnose | calibrate`.
+  `crates/chimera-plugin/`: CLAP, VST3 and AU (`docs/plugin.md`).
 - `src/wasm/`: the UI's facade over the engine. `src/worklet/`: the AudioWorklet. `src/ui/`: React
   and the canvas renderers.
 - `tests/`: bun tests on the wasm build. `tools/`: e2e, layout lint, spectrogram, speech judge.
@@ -54,3 +55,4 @@ and the CLI) under a React UI. See the README.
 | `crates/chimera/` sound | re-bless goldens (above); `cargo run --release -q -p chimera --example bench` against the previous commit |
 | `crates/chimera-wasm/`, `src/wasm/`, `src/worklet/`, `src/main.tsx` | `bun run build && bun run preview`, then `bun tools/e2e.ts` |
 | `src/ui/`, `src/show/`, CSS | `bun run lint:layout` |
+| `crates/chimera-plugin/`, `src/audio/`, `src/ui/store.ts`, `src/ui/singing.ts`, `src/ui/pluginState.ts` | `bun run build`, `cargo build -p chimera-plugin --release --example ui_harness`, then `bun tools/plugin-e2e.ts` |
