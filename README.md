@@ -44,6 +44,12 @@ Xcode's command line tools as well as the above:
 crates/chimera-plugin/macos/build.sh --install
 ```
 
+Or, with GitHub's `gh` logged in, install CI's newest build without building anything:
+
+```sh
+crates/chimera-plugin/macos/update.sh
+```
+
 Builds aren't signed yet. See [docs/plugin.md](docs/plugin.md).
 
 Offline renders and measurement:

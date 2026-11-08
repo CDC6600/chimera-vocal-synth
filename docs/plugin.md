@@ -330,6 +330,23 @@ preset, mic, follow }`, each with defaults, so older projects load. `playing` is
 Beatbox sets the ready posture as the website does. Rust does that as part of the mode command, under
 one transaction and in one `Pending` edit, so neither a held note nor a restore can separate them.
 
+## Updating
+
+`crates/chimera-plugin/macos/update.sh` installs CI's newest passing build into
+`~/Library/Audio/Plug-Ins`. It needs a logged-in `gh`, because GitHub wants an account to download a run's
+artifacts. It removes each old bundle rather than overwriting it, because changing the file of a binary a
+host has loaded would crash the host. A running host keeps the old version until it restarts.
+
+The plugin doesn't replace itself, though it could on a Mac:
+
+- It would be a way to run new code on every install, so it would need its own signature check, and a key
+  that can't leak: anyone who got past that would reach every user's machine.
+- It still takes a host restart, Windows locks a loaded DLL, and a sandboxed host may not let it write.
+- Musicians don't expect an instrument in their session to go online and change itself.
+
+For a public release, the plan is a notice in the plugin that a new version exists (off with one click, and
+making no other network use) and a signed installer: see Later.
+
 ## Testing without a Mac or a DAW
 
 - `Core` has no nih-plug types, so its tests run anywhere: MIDI to audio, allocation, block-size
@@ -362,5 +379,5 @@ if a dependency has no licence, or only a GPL one.
 - Sustain pedal, mod wheel and other controllers.
 - Dragging the host's window border (needs `can_resize` in nih-plug: a fork or an upstream change).
 - A full DSP reset (see Determinism).
-- Signing and notarisation.
+- Signing, notarisation and an installer, with a notice in the plugin when a new version exists.
 - One `Singer` for the browser too, replacing the TypeScript controller.
