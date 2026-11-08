@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { usePhosphor } from "../usePhosphor.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { useStore } from "../store.ts";
-import { V, mix } from "../colors.ts";
+import { TEXT, V, mix } from "../colors.ts";
 import { beam, label, seg } from "../render/vector.ts";
 
 const FMIN = 60, FMAX = 12000;
@@ -79,11 +79,11 @@ export function Spectrogram() {
     for (const [f, t] of [[100, "100"], [1000, "1K"], [10000, "10K"]] as const) {
       const x = left + (Math.log(f / FMIN) / Math.log(FMAX / FMIN)) * frontW;
       seg(ctx, x, base, x, base + 4, V.blueDim, 1);
-      label(ctx, t, x, base + 15, { size: 9, color: V.blueMid, align: "center", ls: 0.1 });
+      label(ctx, t, x, base + 15, { size: 9, color: TEXT.secondary, align: "center", ls: 0.1 });
     }
-    label(ctx, "NOW", left + frontW + 6, base + 3, { size: 9, color: V.blueMid, ls: 0.14 });
-    label(ctx, `${(SLICES * EVERY).toFixed(0)} S AGO`, right + 4, base - depthY + 3, { size: 9, color: V.blueDim, ls: 0.14 });
-    if (!started) label(ctx, "START AUDIO TO SEE THE SOUND", left, 24, { size: 9, color: V.blueMid, ls: 0.16 });
+    label(ctx, "NOW", left + frontW + 6, base + 3, { size: 9, color: TEXT.secondary, ls: 0.14 });
+    label(ctx, `${(SLICES * EVERY).toFixed(0)} S AGO`, right + 4, base - depthY + 3, { size: 9, color: TEXT.secondary, ls: 0.14 });
+    if (!started) label(ctx, "START AUDIO TO SEE THE SOUND", left, 24, { size: 9, color: TEXT.secondary, ls: 0.16 });
   });
   return <canvas ref={ref} className="instrument-canvas" aria-label="Waterfall spectrogram of the last two seconds of output" role="img" />;
 }

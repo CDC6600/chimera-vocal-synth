@@ -3,7 +3,7 @@ import { usePhosphor } from "../usePhosphor.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { currentPlan, onPlan, type SpokenPlan } from "../speech.ts";
 import { activation, type Gesture } from "../../wasm/engine.ts";
-import { V } from "../colors.ts";
+import { TEXT, V } from "../colors.ts";
 import { beam, beamPts, blockLineH, label, labelBlock, seg, wrapLabel, type Pt } from "../render/vector.ts";
 
 /** rows of the score, coloured like the articulators on the face (lips pink, tongue green, soft palate white, glottis amber) */
@@ -49,7 +49,8 @@ export function ScoreView() {
       const bh = wrapLabel(ctx, msg, right - left - 16, { size: 10, ls: 0.12 }).length * blockLineH(10) + 8;
       ctx.fillStyle = "#000";
       ctx.fillRect(left, cy - bh / 2, right - left, bh);
-      labelBlock(ctx, msg, left + 8, cy, right - left - 16, { size: 10, color: V.blueMid, ls: 0.12 });
+      labelBlock(ctx, msg, left + 8, cy, right - left - 16, { size: 10, color: TEXT.secondary, ls: 0.12 });
+        labelBlock(ctx, msg, left + 8, cy, right - left - 16, { size: 10, color: TEXT.secondary, ls: 0.12 });
       return;
     }
     const plan = sp.plan;
@@ -99,6 +100,7 @@ export function ScoreView() {
       const on = now >= s.t0 && now < s.t1;
       seg(ctx, X(s.t0), bottom + 2, X(s.t0), bottom + 6, V.blueDim, 1);
       label(ctx, s.ipa, x, h - 8, { size: 12, color: on ? V.white : V.blue, align: "center", ls: 0 });
+      label(ctx, s.ipa, x, h - 8, { size: 12, color: on ? V.white : TEXT.primary, align: "center", ls: 0 });
     }
     // playhead
     if (now >= T0 && now <= T1) {

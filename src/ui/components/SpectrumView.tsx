@@ -5,7 +5,7 @@ import { sameBody } from "../body.ts";
 import { useStore } from "../store.ts";
 import { useModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
-import { V } from "../colors.ts";
+import { TEXT, V } from "../colors.ts";
 import { beam, beamPts, label, seg, type Pt } from "../render/vector.ts";
 
 const FMIN = 60, FMAX = 8000;
@@ -33,11 +33,11 @@ export function SpectrumView(props: { ring?: boolean }) {
 
     for (const f of [100, 200, 500, 1000, 2000, 5000]) {
       seg(ctx, fx(f), top, fx(f), bot, V.frame, 1);
-      if (!(f0 && Math.abs(fx(f) - fx(f0)) < 40)) label(ctx, f >= 1000 ? `${f / 1000}K` : String(f), fx(f), h - 6, { size: 9, color: V.blueMid, align: "center", ls: 0.1 });
+      if (!(f0 && Math.abs(fx(f) - fx(f0)) < 40)) label(ctx, f >= 1000 ? `${f / 1000}K` : String(f), fx(f), h - 6, { size: 9, color: TEXT.secondary, align: "center", ls: 0.1 });
     }
     for (const db of [-20, -40]) {
       seg(ctx, left, dbY(db), right, dbY(db), V.frame, 1, { dash: [2, 4] });
-      label(ctx, String(db), left - 6, dbY(db) + 3, { size: 8, color: V.blueDim, align: "right", ls: 0.05 });
+      label(ctx, String(db), left - 6, dbY(db) + 3, { size: 8, color: TEXT.secondary, align: "right", ls: 0.05 });
     }
     seg(ctx, left, bot, right, bot, V.blueDim, 1);
     if (ringRef.current) {

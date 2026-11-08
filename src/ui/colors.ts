@@ -17,6 +17,11 @@ export const V = {
 };
 /** the four control slots, in order */
 export const SLOTS = [V.green, V.red, V.pink, V.white] as const;
+/** brighter canvas text, kept separate from the vector line palette */
+export const TEXT = {
+  primary: "#effbff",
+  secondary: "#e2f5fc",
+} as const;
 
 /** mix two #rrggbb colours */
 export function mix(hex: string, to: string, u: number): string {

@@ -4,7 +4,7 @@ import { sameBody } from "../body.ts";
 import { useStore } from "../store.ts";
 import { useModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
-import { V, heat, pressureLevel } from "../colors.ts";
+import { TEXT, V, heat, pressureLevel } from "../colors.ts";
 import { beam, beamPts, label, seg, type Pt } from "../render/vector.ts";
 
 /**
@@ -87,7 +87,7 @@ export function TubeView() {
       if (lx < lastRight + 8) continue;
       lastRight = lx + tw;
       seg(ctx, x, h - 26, x, h - 21, V.blueDim, 1);
-      label(ctx, name, lx, h - 9, { size: 9, color: V.blueMid, ls: 0.16 });
+      label(ctx, name, lx, h - 9, { size: 9, color: TEXT.secondary, ls: 0.16 });
     }
   });
   return <canvas ref={ref} className="instrument-canvas" aria-label="Area function of the simulated tube, lit by sound pressure" role="img" />;

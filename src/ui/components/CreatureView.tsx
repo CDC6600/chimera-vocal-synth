@@ -4,7 +4,7 @@ import { useStore } from "../store.ts";
 import { creatureById } from "../../wasm/engine.ts";
 import type { CreatureDef } from "../../wasm/types.ts";
 import { liveTelemetry, previewTelemetry } from "../creatureLive.ts";
-import { V, SLOTS, heat, pressureLevel } from "../colors.ts";
+import { TEXT, V, SLOTS, heat, pressureLevel } from "../colors.ts";
 import { beamPts, dot, hfont, label, labelWidth, ring, seg, wrapLabel, type Pt } from "../render/vector.ts";
 
 type P = [number, number];
@@ -141,7 +141,7 @@ export function CreatureView() {
       }
       if (tg.label && tg.inView) {
         const m = S(pointAt(tg, tg.length * 0.5));
-        labels.push({ text: tg.label.toUpperCase(), x: m[0] + 12, y: m[1] - 12, color: V.blueMid });
+        labels.push({ text: tg.label.toUpperCase(), x: m[0] + 12, y: m[1] - 12, color: TEXT.secondary });
       }
     }
 
@@ -187,8 +187,8 @@ export function CreatureView() {
     }
 
     // like a map's title: the name, the latin name, and what it is doing
-    label(ctx, fit(ctx, def.name.toUpperCase(), w - 32, compact ? 18 : 24, 0.18), 16, compact ? 30 : 34, { size: compact ? 18 : 24, color: V.blue, ls: 0.18 });
-    label(ctx, fit(ctx, def.latin.toUpperCase(), w - 34, 10, 0.16), 18, compact ? 48 : 54, { size: 10, color: V.blueMid, ls: 0.16 });
+    label(ctx, fit(ctx, def.name.toUpperCase(), w - 32, compact ? 18 : 24, 0.18), 16, compact ? 30 : 34, { size: compact ? 18 : 24, color: TEXT.primary, ls: 0.18 });
+    label(ctx, fit(ctx, def.latin.toUpperCase(), w - 34, 10, 0.16), 18, compact ? 48 : 54, { size: 10, color: TEXT.secondary, ls: 0.16 });
     const state = live ? (live.call ? (def.calls.find((c) => c.id === live.call)?.name ?? live.call) : live.gate > 0.05 ? "Sustaining" : "At rest") : "Not started";
     const pitchText = pp ? (() => { const f = fmtParam(pitch, pp); return `${f.value} ${f.unit}`.trim().toUpperCase(); })() : "";
     if (compact) {
@@ -203,7 +203,7 @@ export function CreatureView() {
     seg(ctx, 18, by, 18 + unit * sc, by, V.blueMid, 1.2);
     seg(ctx, 18, by - 4, 18, by + 4, V.blueMid, 1.2);
     seg(ctx, 18 + unit * sc, by - 4, 18 + unit * sc, by + 4, V.blueMid, 1.2);
-    label(ctx, `${unit} CM`, 26 + unit * sc, by + 3, { size: 9, color: V.blueMid, ls: 0.14 });
+    label(ctx, `${unit} CM`, 26 + unit * sc, by + 3, { size: 9, color: TEXT.secondary, ls: 0.14 });
 
     // the first four parameters, OP-1 style, across the bottom (the encoders on the right share the colours)
     const params = def.params.slice(0, 4);

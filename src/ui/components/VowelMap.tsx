@@ -5,7 +5,7 @@ import { useStore } from "../store.ts";
 import { blendLog, sameBody, type BodyMix } from "../body.ts";
 import { useModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
-import { V } from "../colors.ts";
+import { TEXT, V } from "../colors.ts";
 import { beamPts, handle, ipaGlyph, label, seg, type Pt } from "../render/vector.ts";
 import { nearestVowel } from "./AnatomyView.tsx";
 
@@ -55,7 +55,7 @@ export function VowelMap() {
     for (const v of m.vowels) {
       if (v.ipa === near && live) continue;
       const p = toXY(v.F1, v.F2, w, h);
-      ipaGlyph(ctx, p.x, p.y + 5, v.ipa, 15, V.blueMid);
+      ipaGlyph(ctx, p.x, p.y + 5, v.ipa, 15, TEXT.secondary);
     }
     if (live) {
       // where the tongue has been: a trail of the last 1.5 s, fading with age
@@ -70,8 +70,8 @@ export function VowelMap() {
       handle(ctx, live.x, live.y, V.green, 8);
       ipaGlyph(ctx, live.x + 20, live.y - 8, near, 17, V.green);
     }
-    label(ctx, "F2", w - 6, h - 5, { size: 9, color: V.blueDim, align: "right", ls: 0.1 });
-    label(ctx, "F1", 4, h - 5, { size: 9, color: V.blueDim, ls: 0.1 });
+    label(ctx, "F2", w - 6, h - 5, { size: 9, color: TEXT.secondary, align: "right", ls: 0.1 });
+    label(ctx, "F1", 4, h - 5, { size: 9, color: TEXT.secondary, ls: 0.1 });
   });
 
   const apply = (e: React.PointerEvent) => {

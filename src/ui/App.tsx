@@ -228,7 +228,7 @@ export function App() {
 function Wall() {
   const mode = useStore((s) => s.mode);
   return (
-    <div className={`app mode-${mode}`}>
+    <div className={`app text-colors mode-${mode}`}>
       <TopBar />
       <main className={`wall wall-${mode}`}>
         <LeftScreen />

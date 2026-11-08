@@ -41,9 +41,9 @@
   --amber: #ffb340;
   --glow-blue: 0 0 1.5px rgba(79, 182, 242, 0.9), 0 0 6px rgba(79, 182, 242, 0.4);
   /* older names, remapped so screens not yet redrawn sit on black in blue and amber */
-  --black: #000000;
-  --console: #000000;
-  --inset: #000000;
+  --black: #020406;
+  --console: #0d171f;
+  --inset: #182833;
   --line: var(--frame);
   --text: var(--blue);
   --text-dim: var(--blue-mid);
@@ -53,6 +53,12 @@
   --radius-m: 0;
   --font: "Hershey", "Archivo", system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
   color-scheme: dark;
+}
+
+.text-colors {
+  --text: #effbff;
+  --text-dim: #e2f5fc;
+  color: var(--text);
 }
 
 * {
@@ -227,7 +233,7 @@ button.primary.large {
 
 .anatomy .no-webgl {
   margin: 24px;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -246,6 +252,15 @@ button.primary.large {
   gap: 4px;
   font-size: 13px;
   font-stretch: 87%;
+
+/* Keep UI copy brighter without recolouring vector strokes or borders. */
+.text-colors :is(button:not(.primary), p, h1, h2, h3, h4, label, output, a, .screen-title) {
+  color: var(--text);
+}
+
+.text-colors :is(.tagline, .load, .volume, .screen-sub, .dim, .midi-status, .seq-label, .creature-blurb, .duet-time, .duet-msg) {
+  color: var(--text-dim);
+}
   color: var(--text-dim);
 }
 
@@ -1207,7 +1222,7 @@ body {
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .segmented {
@@ -1226,11 +1241,11 @@ body {
   font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .segmented button:hover {
-  color: var(--blue-mid);
+  color: var(--text);
 }
 
 .segmented button.on {
@@ -1290,12 +1305,12 @@ body {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .repo-link {
   display: inline-flex;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   transition: color 120ms, filter 120ms;
 }
 
@@ -1312,7 +1327,7 @@ button.ghost,
   background: transparent;
   border: 1px solid var(--frame);
   border-radius: 0;
-  color: var(--blue-mid);
+  color: var(--text);
   padding: 5px 11px;
   font-family: var(--font);
   font-weight: 300;
@@ -1419,7 +1434,7 @@ button.ghost:hover,
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--blue-mid);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1496,7 +1511,7 @@ button.ghost:hover,
   font-size: 9px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   cursor: pointer;
 }
 
@@ -1525,12 +1540,12 @@ button.ghost:hover,
 .start-prompt p {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--blue-mid);
+  color: var(--text-dim);
 }
 
 .start-prompt .hint {
   font-size: 11px;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .start-prompt .error {
@@ -1560,7 +1575,7 @@ button.ghost:hover,
   appearance: none;
   background: transparent;
   border: 1px solid var(--frame);
-  color: var(--blue-dim);
+  color: var(--text-dim);
   padding: 2px 7px;
   font-family: var(--font);
   font-size: 9px;
@@ -1735,7 +1750,7 @@ button.midi {
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 button.midi.on {
@@ -2008,7 +2023,7 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 300;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   padding: 1px 3px;
   white-space: nowrap;
   text-align: center;
@@ -2167,7 +2182,7 @@ input[type="range"]::-moz-range-thumb {
   background: transparent;
   border: 1px solid var(--frame);
   border-radius: 0;
-  color: var(--blue-mid);
+  color: var(--text);
   padding: 2px 7px;
   font-family: var(--font);
   font-size: 10px;
@@ -2177,7 +2192,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .syl.sung {
-  color: var(--blue-dim);
+  color: var(--text-dim);
   border-color: rgba(19, 57, 84, 0.6);
 }
 
@@ -2202,7 +2217,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .breath-mark {
-  color: var(--blue-mid);
+  color: var(--text-dim);
   margin-left: 2px;
 }
 
@@ -2280,7 +2295,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -2402,7 +2417,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 8px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .s-pads .pad-key {
@@ -2410,7 +2425,7 @@ input[type="range"]::-moz-range-thumb {
   top: 3px;
   right: 5px;
   font-size: 8px;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 /* transport */
@@ -2480,7 +2495,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 8px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2604,7 +2619,7 @@ input[type="range"]::-moz-range-thumb {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 0;
-  color: var(--blue-mid);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -2640,7 +2655,7 @@ input[type="range"]::-moz-range-thumb {
   font-style: normal;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2668,7 +2683,7 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--frame);
   border-radius: 0;
   padding: 4px 10px;
-  color: var(--blue-mid);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
 }
@@ -2713,7 +2728,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 8px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--blue-dim);
+  color: var(--text-dim);
   margin-right: 4px;
 }
 
@@ -2727,7 +2742,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 10px;
   line-height: 1.5;
   letter-spacing: 0.04em;
-  color: var(--blue-dim);
+  color: var(--text-dim);
 }
 
 .cparams-role {
@@ -2736,7 +2751,7 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.5;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--blue-mid);
+  color: var(--text-dim);
 }
 
 .s-cparams .enc-label {
@@ -2799,7 +2814,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--blue-mid);
+  color: var(--text-dim);
 }
 
 .duet-heads {
@@ -2828,7 +2843,7 @@ input[type="range"]::-moz-range-thumb {
 .duet-time {
   flex: none;
   font-variant-numeric: tabular-nums;
-  color: var(--blue-mid);
+  color: var(--text-dim);
 }
 
 .duet-bar input[type="range"] {
@@ -2840,7 +2855,7 @@ input[type="range"]::-moz-range-thumb {
   margin: auto;
   padding: 24px;
   text-align: center;
-  color: var(--blue-mid);
+  color: var(--text);
 }
 
 .duet-msg.error {

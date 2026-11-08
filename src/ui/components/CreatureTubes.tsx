@@ -2,7 +2,7 @@ import { usePhosphor } from "../usePhosphor.ts";
 import { useStore } from "../store.ts";
 import { creatureById } from "../../wasm/engine.ts";
 import { liveTelemetry, previewTelemetry } from "../creatureLive.ts";
-import { V, heat, pressureLevel } from "../colors.ts";
+import { TEXT, V, heat, pressureLevel } from "../colors.ts";
 import { beam, beamPts, label, type Pt } from "../render/vector.ts";
 
 const a2d = (A: number) => 2 * Math.sqrt(Math.max(0, A) / Math.PI);
@@ -24,7 +24,8 @@ export function CreatureTubes() {
     lanes.forEach((l, li) => {
       const data = tele.tubes[l.tube];
       const y = 3 + laneH * (li + 0.5);
-      label(ctx, (l.label ?? l.tube).toUpperCase(), 14, y + 3, { size: 9, color: V.blueMid, ls: 0.16 });
+      label(ctx, (l.label ?? l.tube).toUpperCase(), 14, y + 3, { size: 9, color: TEXT.secondary, ls: 0.16 });
+        label(ctx, (l.label ?? l.tube).toUpperCase(), 14, y + 3, { size: 9, color: TEXT.secondary, ls: 0.16 });
       const n = data.areas.length;
       const x0 = labelW, x1 = w - 14;
       const dx = (x1 - x0) / n;
