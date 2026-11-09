@@ -2860,11 +2860,14 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ---------- the plugin window's grip */
-/* the plugin's window doesn't scroll, which with a mouse would show a scrollbar beside the grip: the
-   page zooms out to fit instead (docs/plugin.md, "Window size") */
-html.plugin-page,
-html.plugin-page body {
-  overflow: hidden;
+/* the page zooms out to fit (docs/plugin.md, "Window size"), but text shrinks less than the rest of it
+   on a display that isn't Retina, so the wheel can still reach what's below; with a mouse macOS would
+   show a scrollbar here, beside the grip */
+html.plugin-page {
+  scrollbar-width: none;
+}
+html.plugin-page::-webkit-scrollbar {
+  display: none;
 }
 
 /* in from the corner, because macOS keeps the last dozen points or so of a resizable window's corner

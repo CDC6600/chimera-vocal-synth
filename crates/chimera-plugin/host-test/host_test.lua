@@ -4,7 +4,8 @@
 -- See docs/plugin.md, "Testing in a host".
 --
 -- Environment: CHIMERA_TEST_OUT (a folder), CHIMERA_TEST_FORMATS ("CLAP,VST3,AU"),
--- CHIMERA_TEST_EDITOR (1 to open the editors: Linux has none), CHIMERA_TEST_RATE (Hz).
+-- CHIMERA_TEST_EDITOR (1 to open the editors: Linux has none), CHIMERA_TEST_RATE (Hz),
+-- CHIMERA_TEST_REOPEN (a project an earlier run saved, to open instead).
 
 local OUT = os.getenv("CHIMERA_TEST_OUT")
 -- the rate REAPER runs its plugins at until it renders: rendering at another restarts a VST3 partway
@@ -191,6 +192,7 @@ local CASES = {
   { name = "sing", seconds = 7, notes = { { 0.5, 48, 1 }, { 2.0, 52, 1 }, { 3.5, 55, 1 }, { 5.0, 60, 1 } } },
   { name = "beatbox", seconds = 8.5, patches = { setting("mode", '\\"beatbox\\"'), steps_patch(true) }, notes = {} },
   { name = "pads", seconds = 5, patches = { setting("mode", '\\"beatbox\\"'), steps_patch(false) }, notes = { { 1, 36, 0.1 }, { 2, 36, 0.1 }, { 3, 36, 0.1 }, { 4, 36, 0.1 } } },
+  { name = "hum", seconds = 2.5, patches = { setting("mode", '\\"beatbox\\"'), steps_patch(false) }, notes = { { 0.5, 72, 1.2 } } },
   { name = "speak", seconds = 7, patches = { setting("mode", '\\"speak\\"'), speech_patch }, notes = { { 0.5, 60, 0.2 }, { 3.5, 60, 0.2 } } },
 }
 
@@ -257,9 +259,36 @@ local function editor(format)
   local good, err = pcall(render, format .. "-clicked", 8.5)
   record({ format = format, case = "clicked", fx_name = name, pdc = pdc(tr, fx), error = good and "" or tostring(err) })
 
+  -- kept for the project this run saves, and silent in the next format's bounce
   reaper.TrackFX_Show(tr, fx, 2)
   sleep(1)
-  reaper.DeleteTrack(tr)
+  reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 1)
+end
+
+local function format_of(tr)
+  local _, name = reaper.TrackFX_GetFXName(tr, 0, "")
+  return name:match("^(%u+%d?)i?:")
+end
+
+-- What a project saved by an earlier run comes back as: the mode, the window's size, and a bounce.
+local function reopen(project)
+  reaper.Main_openProject(project)
+  sleep(2)
+  for i = 0, reaper.CountTracks(0) - 1 do
+    local tr = reaper.GetTrack(0, i)
+    local format = format_of(tr)
+    reaper.TrackFX_Show(tr, 0, 3)
+    sleep(4)
+    local answered = ask("reopened-" .. format)
+    local state = state_of(tr, 0, format)
+    record({ format = format, case = "reopened", answered = answered, mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?", window = window_of(state), pdc = pdc(tr, 0) })
+    reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 0)
+    local good, err = pcall(render, format .. "-reopened-bounce", 8.5)
+    record({ format = format, case = "reopened-bounce", fx_name = format, pdc = pdc(tr, 0), error = good and "" or tostring(err) })
+    reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 1)
+    reaper.TrackFX_Show(tr, 0, 2)
+    sleep(1)
+  end
 end
 
 local function main()
@@ -269,12 +298,18 @@ local function main()
   reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true)
   reaper.SetCurrentBPM(0, BPM, false)
   record({ reaper = reaper.GetAppVersion(), os = reaper.GetOS() })
+  local project = os.getenv("CHIMERA_TEST_REOPEN")
+  if project then
+    reopen(project)
+    return
+  end
   for _, format in ipairs(FORMATS) do
     for _, case in ipairs(CASES) do run_case(format, case) end
   end
   if os.getenv("CHIMERA_TEST_EDITOR") == "1" then
     for _, format in ipairs(FORMATS) do editor(format) end
   end
+  reaper.Main_SaveProjectEx(0, OUT .. "/saved-" .. FORMATS[1] .. ".rpp", 0)
 end
 
 local co = coroutine.create(main)
@@ -284,6 +319,7 @@ local function tick()
   if coroutine.status(co) == "dead" then
     results:close()
     touch("finished")
+    reaper.Main_OnCommand(40004, 0) -- quit, saved or with nothing to save, so it won't ask
   else
     reaper.defer(tick)
   end

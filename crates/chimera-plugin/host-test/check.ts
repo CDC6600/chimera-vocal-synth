@@ -23,6 +23,8 @@ const RATES = [44100, 48000];
 const SAME_SOUND = 6;
 /** How far macos/host-test.sh drags the grip inwards (points), and what the window may differ by. */
 const GRIP_DRAG = [100, 60], GRIP_SLACK = 3;
+/** The host rounds the window's size (points). */
+const WINDOW_SLACK = 2;
 /** REAPER's title bar and toolbar above the editor (points): CHROME in macos/host-test.sh. */
 const REAPER_CHROME = 54;
 /** Above this a stretch is sounding, and below SILENT it isn't. */
@@ -145,6 +147,8 @@ const records = readFileSync(`${folder}/results.jsonl`, "utf8").trim().split("\n
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 const firstOfCase: Record<string, { format: string; wav: Wav }> = {};
+/** Each format's window size as the project saved it. */
+const saved: Record<string, string> = {};
 
 const judge: Record<string, (name: string, w: Wav) => void> = {
   sing(name, w) {
@@ -185,6 +189,17 @@ const judge: Record<string, (name: string, w: Wav) => void> = {
   clicked(name, w) {
     judge.beatbox(name, w);
   },
+  "reopened-bounce"(name, w) {
+    judge.beatbox(name, w);
+  },
+  // a note from middle C up hums two octaves down, in Beatbox
+  hum(name, w) {
+    check(`${name} silent before the note`, rms(w, 0, 0.4) < SILENT, `rms ${rms(w, 0, 0.4).toExponential(1)}`);
+    const level = rms(w, 0.6, 1.6);
+    check(`${name} sounds`, level > SOUNDING, `rms ${level.toExponential(1)}`);
+    const hz = pitch(w, 1, 1.4), cents = 1200 * Math.log2(hz / midiHz(48));
+    check(`${name} two octaves down`, Math.abs(cents) < IN_TUNE, `${hz.toFixed(1)} Hz, ${cents.toFixed(0)} cents off midi 48`);
+  },
   speak(name, w) {
     check(`${name} silent before the first note`, rms(w, 0, 0.45) < SILENT, `rms ${rms(w, 0, 0.45).toExponential(1)}`);
     for (const [t, line] of [[0.5, 1], [3.5, 2]]) {
@@ -216,7 +231,19 @@ for (const r of records) {
     const narrower = before[2] - after[2], lower = before[3] - after[3];
     check(`${name} grip resized the window`, Math.abs(narrower - GRIP_DRAG[0]) <= GRIP_SLACK && Math.abs(lower - GRIP_DRAG[1]) <= GRIP_SLACK, `${before[2]}x${before[3]} to ${after[2]}x${after[3]}`);
     const [w, h] = String(r.window).split(",").map(Number);
-    check(`${name} the project keeps that size`, w === after[2] && h === after[3] - REAPER_CHROME, `saved ${r.window}`);
+    check(`${name} the project keeps that size`, Math.abs(w - after[2]) <= WINDOW_SLACK && Math.abs(h + REAPER_CHROME - after[3]) <= WINDOW_SLACK, `saved ${r.window}`);
+    saved[String(r.format)] = String(r.window);
+    continue;
+  }
+  if (r.case === "reopened") {
+    check(`${name} project comes back in its mode`, r.mode === "beatbox", `mode ${r.mode}, reported delay ${r.pdc}`);
+    check(`${name} project comes back at its size`, r.window === saved[String(r.format)], `saved ${saved[String(r.format)]}, came back ${r.window}`);
+    const boundsFile = `${folder}/reopened-${r.format}.txt`;
+    if (existsSync(boundsFile)) {
+      const [, , bw, bh] = readFileSync(boundsFile, "utf8").trim().split(" ").map(Number);
+      const [w, h] = String(r.window).split(",").map(Number);
+      check(`${name} window opens at that size`, Math.abs(w - bw) <= WINDOW_SLACK && Math.abs(h + REAPER_CHROME - bh) <= WINDOW_SLACK, `${bw}x${bh}`);
+    }
     continue;
   }
   if (r.error) {
@@ -227,7 +254,7 @@ for (const r of records) {
     console.log(`skip ${name}: ${r.skipped}`);
     continue;
   }
-  const beat = r.case === "beatbox" || r.case === "pads" || r.case === "clicked";
+  const beat = r.case === "beatbox" || r.case === "pads" || r.case === "hum" || r.case === "clicked" || r.case === "reopened-bounce";
   const expected = beat ? RATES.map((fs) => BEAT_LATENCY * fs) : [0];
   check(`${name} reports its delay`, expected.some((e) => Math.abs(Number(r.pdc) - e) <= 1), `${r.pdc} samples, loaded as "${r.fx_name}"`);
   const file = `${folder}/${r.format}-${r.case}.wav`;

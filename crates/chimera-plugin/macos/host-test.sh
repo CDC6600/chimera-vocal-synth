@@ -84,7 +84,6 @@ wait_for_nag() {
 
 editor() { # format
   local fmt=$1 x y w h view_h zoom tab_x tab_y gx gy
-  osascript -e 'tell application "System Events" to tell process "REAPER" to get {name, name of buttons} of every window' 2>&1 | cut -c1-300 || true
   osascript -e 'tell application "System Events" to tell process "REAPER" to set frontmost to true' 2>&1 || true
   shot "$fmt-open"
   read -r x y w h <<<"$(bounds)" || true
@@ -116,19 +115,6 @@ editor() { # format
 echo "screen: $(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>&1)"
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet cliclick
 
-# The page in the engine the editor uses here, which Chromium's lint can't stand in for
-echo "--- the plugin's page in WebKit"
-(
-  cd "$root"
-  cargo build -q -p chimera-plugin --release --example ui_harness
-  bunx playwright-core install webkit >/dev/null 2>&1
-  target/release/examples/ui_harness 8549 >/dev/null 2>&1 &
-  harness=$!
-  sleep 2
-  bun tools/layout-lint.ts --plugin --webkit --url http://127.0.0.1:8549/ 2>&1 | tail -40 || true
-  kill "$harness" 2>/dev/null || true
-) || echo "::warning::the WebKit lint didn't run"
-
 curl -fsSL -o "$work/reaper.dmg" "https://www.reaper.fm/files/7.x/reaper${version}_universal.dmg"
 echo "$sha  $work/reaper.dmg" | shasum -a 256 -c -
 yes | hdiutil attach -nobrowse -noverify -mountpoint "$work/mnt" "$work/reaper.dmg" >/dev/null || true
@@ -137,23 +123,25 @@ hdiutil detach "$work/mnt" >/dev/null || true
 
 config="$HOME/Library/Application Support/REAPER"
 
-run_reaper() { # formats
-  local pid deadline started first_shot marker step answered
+run_reaper() { # formats, and a project to reopen instead of starting afresh
+  local pid deadline marker step answered i
   rm -f "$out/finished"
-  # each as a first run: a second launch after being killed got stuck, with nothing on screen to answer
-  rm -rf "$config"
-  mkdir -p "$config/Scripts"
-  cp "$here/host-test/host_test.lua" "$config/Scripts/__startup.lua"
+  # A first run, unless it's coming back to a project. A launch after REAPER was killed got stuck with
+  # nothing on screen to answer, so each one here gets to quit by itself.
+  if [ -z "${2:-}" ]; then
+    rm -rf "$config"
+    mkdir -p "$config/Scripts"
+    cp "$here/host-test/host_test.lua" "$config/Scripts/__startup.lua"
+  fi
   # 48 kHz: what this Mac's sound device runs at, so what REAPER prepares plugins at
-  env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS="$1" CHIMERA_TEST_EDITOR=1 CHIMERA_TEST_RATE=48000 \
+  env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS="$1" CHIMERA_TEST_EDITOR=1 CHIMERA_TEST_RATE=48000 CHIMERA_TEST_REOPEN="${2:-}" \
     "$work/REAPER.app/Contents/MacOS/REAPER" -nosplash >>"$out/reaper.log" 2>&1 &
   pid=$!
   deadline=$((SECONDS + 420))
-  started=0
-  first_shot=$((SECONDS + 60))
   while [ ! -e "$out/finished" ]; do
     if [ "$SECONDS" -gt "$deadline" ]; then
       echo "::warning::REAPER didn't finish in time"
+      shot "stuck-$1"
       break
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -162,10 +150,6 @@ run_reaper() { # formats
     fi
     answered=$(dialogs)
     [ -z "$answered" ] || echo "answered $answered"
-    if [ "$started" = 0 ] && [ "$SECONDS" -gt "$first_shot" ]; then
-      started=1
-      shot "start-$1"
-    fi
     for marker in "$out"/at-*; do
       [ -e "$marker" ] || continue
       step=${marker##*/at-}
@@ -174,16 +158,23 @@ run_reaper() { # formats
         ready) wait_for_nag ;;
         editor-*) editor "${step#editor-}" ;;
         shot-*) shot "${step#shot-}" ;;
+        reopened-*)
+          bounds >"$out/$step.txt"
+          echo "$step window: $(cat "$out/$step.txt")"
+          shot "$step"
+          ;;
       esac
       touch "$out/go-$step"
     done
     sleep 0.5
   done
-  shot "end-$1"
-  kill "$pid" 2>/dev/null || true
-  sleep 2
+  for i in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
   kill -9 "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+  rm -f "$out"/go-*
 }
 
 # AU alone, as in a host that only takes AU: all three bundles hold one binary, and in one process
@@ -191,14 +182,13 @@ run_reaper() { # formats
 plugins="$HOME/Library/Audio/Plug-Ins"
 mkdir -p "$work/hidden"
 mv "$plugins/CLAP/CHIMERA.clap" "$plugins/VST3/CHIMERA.vst3" "$work/hidden/"
-echo "--- the AU's view, loaded as Apple documents for hosts"
-clang -fobjc-arc -framework AppKit -framework AudioToolbox -framework AudioUnit "$here/host-test/au_view.m" -o "$work/au_view" 2>&1 || true
-"$work/au_view" 2>&1 | grep -v 'clap-wrapper\|^$' | tail -20 || true
 run_reaper AU
+run_reaper AU "$out/saved-AU.rpp"
 mv "$work/hidden/CHIMERA.clap" "$plugins/CLAP/"
 mv "$work/hidden/CHIMERA.vst3" "$plugins/VST3/"
 
 run_reaper CLAP,VST3
+run_reaper CLAP,VST3 "$out/saved-CLAP.rpp"
 
 tail -20 "$out/reaper.log" || true
 grep -il chimera "$config"/*.ini 2>/dev/null | while read -r f; do echo "--- $f"; grep -i -B1 -A1 chimera "$f" | cut -c1-160; done || true
