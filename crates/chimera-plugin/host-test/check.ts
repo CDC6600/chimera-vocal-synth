@@ -3,7 +3,10 @@
  * sound when they should, on the right pitch, and on the grid once the host has compensated for the
  * reported delay? Prints every number, so a failure says how far off it was.
  *
- *   bun crates/chimera-plugin/host-test/check.ts <folder>
+ *   bun crates/chimera-plugin/host-test/check.ts <folder> <formats, as CLAP,VST3,AU> [--editor]
+ *
+ * Every format has to have got through every case: a run that did nothing mustn't pass. AU's cases
+ * that need its state set from a script are left out, because REAPER can't.
  */
 import { existsSync, readFileSync } from "node:fs";
 
@@ -134,8 +137,9 @@ function loudnessDifference(a: Wav, b: Wav): number {
   return n ? sum / n : 0;
 }
 
-const folder = process.argv[2];
-if (!folder) throw new Error("which folder?");
+const [folder, formatList] = process.argv.slice(2);
+if (!folder || !formatList) throw new Error("which folder, and which formats?");
+const withEditor = process.argv.includes("--editor");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -274,6 +278,13 @@ for (const r of records) {
       console.log(`     ${first.format}: ${spans(first.wav)}`);
       console.log(`     ${r.format}: ${spans(wav)}`);
     }
+  }
+}
+
+for (const format of formatList.split(",")) {
+  const cases = ["sing", ...(format === "AU" ? [] : ["beatbox", "pads", "hum", "speak"]), ...(withEditor ? ["editor", "clicked", "reopened", "reopened-bounce"] : [])];
+  for (const c of cases) {
+    if (!records.some((r) => r.format === format && r.case === c)) check(`${format} ${c}`, false, "never ran");
   }
 }
 

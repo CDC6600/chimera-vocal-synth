@@ -193,4 +193,4 @@ run_reaper CLAP,VST3 "$out/saved-CLAP.rpp"
 tail -20 "$out/reaper.log" || true
 grep -il chimera "$config"/*.ini 2>/dev/null | while read -r f; do echo "--- $f"; grep -i -B1 -A1 chimera "$f" | cut -c1-160; done || true
 
-bun "$here/host-test/check.ts" "$out"
+bun "$here/host-test/check.ts" "$out" CLAP,VST3,AU --editor

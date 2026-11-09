@@ -299,7 +299,7 @@ local function main()
   reaper.SetCurrentBPM(0, BPM, false)
   record({ reaper = reaper.GetAppVersion(), os = reaper.GetOS() })
   local project = os.getenv("CHIMERA_TEST_REOPEN")
-  if project then
+  if project and project ~= "" then
     reopen(project)
     return
   end
