@@ -2867,17 +2867,18 @@ html.plugin-page body {
   overflow: hidden;
 }
 
-/* larger than what's drawn: it shrinks with the page's zoom, and a host's window has a resize corner
-   of its own right beside it */
+/* in from the corner, because macOS keeps the last dozen points or so of a resizable window's corner
+   for resizing that window, and a drag there never reaches the page; larger than what's drawn, because
+   it shrinks with the page's zoom (measured in REAPER by crates/chimera-plugin/macos/host-test.sh) */
 .resize-grip {
   position: fixed;
-  right: 0;
-  bottom: 0;
+  right: 6px;
+  bottom: 6px;
   width: 24px;
   height: 24px;
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   z-index: 40;
   color: var(--blue-mid);
   cursor: nwse-resize;

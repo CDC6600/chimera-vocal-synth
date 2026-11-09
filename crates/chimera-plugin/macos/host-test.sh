@@ -82,30 +82,9 @@ wait_for_nag() {
   echo "::warning::REAPER's nag didn't come and go"
 }
 
-# a close-up, with the pointer in it
-closeup() { # name x y w h
-  screencapture -x -C -R"$2,$3,$4,$5" "$out/$1.png" || return 0
-  sips -Z 500 -s format jpeg -s formatOptions 70 "$out/$1.png" --out "$out/$1.jpg" >/dev/null
-  echo "=== screenshot $1 begin"
-  base64 -b 200 -i "$out/$1.jpg"
-  echo "=== screenshot $1 end"
-}
-
-# Where does a drag near the corner go? REAPER may take it for its own window.
-try_grip() { # format, inset x, inset y
-  local x y w h gx gy
-  read -r x y w h <<<"$(bounds)" || true
-  gx=$((x + w - $2))
-  gy=$((y + h - $3))
-  cliclick "m:$gx,$gy" w:400
-  closeup "hover-$1-$2-$3" $((x + w - 60)) $((y + h - 60)) 60 60
-  cliclick "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
-  sleep 2
-  echo "$1 drag from inset $2,$3: $x $y $w $h to $(bounds)"
-}
-
 editor() { # format
   local fmt=$1 x y w h view_h zoom tab_x tab_y gx gy
+  osascript -e 'tell application "System Events" to tell process "REAPER" to get {name, name of buttons} of every window' 2>&1 | cut -c1-300 || true
   osascript -e 'tell application "System Events" to tell process "REAPER" to set frontmost to true' 2>&1 || true
   shot "$fmt-open"
   read -r x y w h <<<"$(bounds)" || true
@@ -124,17 +103,9 @@ editor() { # format
   cliclick "c:$tab_x,$tab_y"
   sleep 3
   shot "$fmt-beatbox"
-  if [ "$fmt" = CLAP ]; then
-    # a drag in the middle of the page first, then ones further and further from the corner
-    try_grip "$fmt" $((w / 2)) $((view_h / 2))
-    try_grip "$fmt" 16 16
-    try_grip "$fmt" 18 8
-    try_grip "$fmt" 8 18
-    return 0
-  fi
-  # inside the grip, and clear of the host window's own resize corner
-  gx=$((x + w - 12))
-  gy=$((y + h - 12))
+  # the grip, past the corner macOS keeps for resizing the host's window: 12 points in is still its
+  gx=$((x + w - 16))
+  gy=$((y + h - 16))
   cliclick "m:$gx,$gy" w:200 "dd:$gx,$gy" w:200 "dm:$((gx - 30)),$((gy - 20))" w:200 "dm:$((gx - 100)),$((gy - 60))" w:200 "du:$((gx - 100)),$((gy - 60))"
   sleep 3
   { echo "$x $y $w $h"; bounds; } >"$out/bounds-$fmt.txt"
@@ -165,12 +136,14 @@ cp -R "$work/mnt/REAPER.app" "$work/"
 hdiutil detach "$work/mnt" >/dev/null || true
 
 config="$HOME/Library/Application Support/REAPER"
-mkdir -p "$config/Scripts"
-cp "$here/host-test/host_test.lua" "$config/Scripts/__startup.lua"
 
 run_reaper() { # formats
   local pid deadline started first_shot marker step answered
   rm -f "$out/finished"
+  # each as a first run: a second launch after being killed got stuck, with nothing on screen to answer
+  rm -rf "$config"
+  mkdir -p "$config/Scripts"
+  cp "$here/host-test/host_test.lua" "$config/Scripts/__startup.lua"
   # 48 kHz: what this Mac's sound device runs at, so what REAPER prepares plugins at
   env -u GH_TOKEN CHIMERA_TEST_OUT="$out" CHIMERA_TEST_FORMATS="$1" CHIMERA_TEST_EDITOR=1 CHIMERA_TEST_RATE=48000 \
     "$work/REAPER.app/Contents/MacOS/REAPER" -nosplash >>"$out/reaper.log" 2>&1 &
@@ -213,10 +186,8 @@ run_reaper() { # formats
   wait "$pid" 2>/dev/null || true
 }
 
-run_reaper CLAP,VST3
-
-# Alone, as in a host that only takes AU: all three bundles hold one binary, and in one process their
-# Objective-C classes share names, which a host's lookup of the AU's view may trip over.
+# AU alone, as in a host that only takes AU: all three bundles hold one binary, and in one process
+# their Objective-C classes share names, which a host's lookup of the AU's view trips over.
 plugins="$HOME/Library/Audio/Plug-Ins"
 mkdir -p "$work/hidden"
 mv "$plugins/CLAP/CHIMERA.clap" "$plugins/VST3/CHIMERA.vst3" "$work/hidden/"
@@ -226,6 +197,8 @@ clang -fobjc-arc -framework AppKit -framework AudioToolbox -framework AudioUnit 
 run_reaper AU
 mv "$work/hidden/CHIMERA.clap" "$plugins/CLAP/"
 mv "$work/hidden/CHIMERA.vst3" "$plugins/VST3/"
+
+run_reaper CLAP,VST3
 
 tail -20 "$out/reaper.log" || true
 grep -il chimera "$config"/*.ini 2>/dev/null | while read -r f; do echo "--- $f"; grep -i -B1 -A1 chimera "$f" | cut -c1-160; done || true
