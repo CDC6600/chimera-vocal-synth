@@ -252,7 +252,13 @@ for (const r of records) {
     continue;
   }
   if (r.case === "reopened-click") {
-    check(`${name} page answers a click`, r.mode === "sing", `mode ${r.mode}`);
+    const clicked = `${folder}/${r.format}-reopened-click.wav`;
+    if (!existsSync(clicked)) {
+      check(`${name} rendered`, false, "no file");
+      continue;
+    }
+    const w = readWav(clicked), level = rms(w, 0, w.x.length / w.fs);
+    check(`${name} page answers a click: the pattern stops`, level < SOUNDING, `rms ${level.toExponential(1)}, mode reads ${r.mode}`);
     continue;
   }
   if (r.error) {

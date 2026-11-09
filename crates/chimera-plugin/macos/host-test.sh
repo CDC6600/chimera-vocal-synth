@@ -52,10 +52,11 @@ dialogs() {
   end tell' 2>/dev/null || true
 }
 
-# Where the Sing and Beatbox tabs are in the page at zoom 1, from screenshots of it in WKWebView, and
-# the height of REAPER's title bar and toolbar above the editor. The page zooms out below LAYOUT_MIN
-# (page_zoom in crates/chimera-plugin/src/bridge.rs).
-SING_X=427
+# Where the tabs are in the page, from screenshots of it in WKWebView, and the height of REAPER's title
+# bar and toolbar above the editor. The tabs move with the zoom: Beatbox's by little, so this suits
+# any window, and Play's by more, so this is for the size the grip leaves it, 924 x 564. The page
+# zooms out below LAYOUT_MIN (page_zoom in crates/chimera-plugin/src/bridge.rs).
+PLAY_X=453
 BEATBOX_X=612
 TAB_Y=26
 CHROME=54
@@ -166,9 +167,9 @@ run_reaper() { # formats, and a project to reopen instead of starting afresh
         ready) if [ -z "${2:-}" ]; then wait_for_nag; fi ;;
         editor-*) editor "${step#editor-}" ;;
         shot-*) shot "${step#shot-}" ;;
-        click-sing-*)
+        click-play-*)
           read -r bx by bw bh <<<"$(bounds)" || true
-          case "${bh:-}" in '' | *[!0-9]*) echo "no window to click" ;; *) click_tab "$SING_X" "$bx" "$by" "$bw" "$bh" ;; esac
+          case "${bh:-}" in '' | *[!0-9]*) echo "no window to click" ;; *) click_tab "$PLAY_X" "$bx" "$by" "$bw" "$bh" ;; esac
           ;;
         reopened-*)
           bounds >"$out/$step.txt"

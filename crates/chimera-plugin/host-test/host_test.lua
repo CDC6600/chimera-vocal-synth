@@ -285,12 +285,14 @@ local function reopen(project)
     reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 0)
     local good, err = pcall(render, format .. "-reopened-bounce", 8.5)
     record({ format = format, case = "reopened-bounce", fx_name = format, pdc = pdc(tr, 0), error = good and "" or tostring(err) })
-    reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 1)
-    -- a reopened page that never built would pass all of the above, which only ask the plugin
-    ask("click-sing-" .. format)
-    sleep(1)
+    -- A reopened page that never built would pass all of the above, which only ask the plugin. Clicked
+    -- away from Beatbox, the pattern stops and a bounce is silent, which needs no reading of its state.
+    ask("click-play-" .. format)
+    sleep(1.5)
     state = state_of(tr, 0, format)
-    record({ format = format, case = "reopened-click", mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?" })
+    good, err = pcall(render, format .. "-reopened-click", 2.5)
+    record({ format = format, case = "reopened-click", mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?", error = good and "" or tostring(err) })
+    reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 1)
     reaper.TrackFX_Show(tr, 0, 2)
     sleep(1)
   end
