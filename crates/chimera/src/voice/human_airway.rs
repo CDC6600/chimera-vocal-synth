@@ -163,7 +163,7 @@ impl HumanAirway {
             seal_lo: 0.03,
             seal_hi: 0.4,
             seal_ease: 0.03,
-            lip_open_rate: 15.0,
+            lip_open_rate: 7.0,
             base: None,
             base_dt: 0.0,
             noise_list: Vec::with_capacity(8),

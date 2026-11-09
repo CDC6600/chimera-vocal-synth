@@ -261,9 +261,9 @@ impl HumanVoice {
         v.output_gain *= if sc >= 1.0 {
             1.0
         } else if sc <= 0.9 {
-            0.69
+            0.875
         } else {
-            0.69 + 0.31 * (sc - 0.9) / 0.1
+            0.875 + 0.125 * (sc - 0.9) / 0.1
         };
         v.apply_source();
         v
@@ -320,7 +320,7 @@ impl HumanVoice {
         // the arytenoids through the closed phase (Södersten & Lindestad 1990). It leaks a little
         // air and damps the tract, which lifts H1 and the band below 500 Hz.
         g.chink = (0.008 + 0.03 * s.breathiness) * k2;
-        g.open_quotient = 0.78 - 0.36 * s.tension;
+        g.open_quotient = 0.78 - 0.36 * s.tension + body.open_phase;
         // The folds close along their length and depth over a return phase, not all at once, so
         // a sung or spoken voice closes softly (0.22 at tension 0.55): an abrupt closure put
         // 3-8 dB too much energy above 2 kHz. Pressing harder than that brings the abrupt closure
