@@ -1437,20 +1437,16 @@ Largest costs first. Costs are the speakers' report, female / male where both.
 2. **/ð v/ too loud.** Closed by experiments 23 and 26: level /v/ 0 / 0.7, level /ð/ 0.2 / 0.5. Lead 3 is no longer blocked by it.
 3. **The female source.** Taken a step by experiment 27: the pulse follows the fold's length, her vowels 2 dB lower against her consonants. /ʃ tʃ/ are still 13–14 dB low, and her flow still falls 1.10 times as fast as his, where real women's is slower. Lead 23 (her open phase) is next, then lead 4.
 4. **How turbulence scales.** Closed by experiment 28: Stevens' v³·√A doesn't explain the gap, and it lifts /s/ 5 dB over /ʃ/, the wrong way. It gives her 0.5 of /ʃ/'s extra 8.7 dB. What the probe found instead is lead 26.
-5. **Affricates.** /tʃ/ closed by experiment 22: a closure and 60 ms of frication, voicing as it ends, and
-   level /tʃ/ now reads frication (cost 9.2 / 1.9, the same gap as /ʃ/, lead 3). /dʒ/ is open: its folds
-   stay together, so it has no frication and MFA reads it as a closure (duration 3.0 / 2.8). The fix is
-   measured and logged in experiment 22, at −0.09 of score, and level /dʒ/ blocked it. Retry it first:
-   that term's limit moved with the kept run. The [h]'s broad noise (top at 10–14 kHz) is gone from /tʃ/;
-   nobody has found its source, and stops may still have it.
-6. **Short /dʒ z/, long nasals.** Duration /z/ 2.9 / 1.9, /dʒ/ 2.7 / 3.0. The long nasals are mostly closed by
+5. **Affricates.** Closed: /tʃ/ by experiment 22 (a closure and 60 ms of frication, voicing as it ends), /dʒ/ by experiment 29 (the same folds, parted only for the release, duration 0 / 0, score −0.099). Level /tʃ/ and /dʒ/ now read frication,
+   the same gap as /ʃ/ (lead 3). The [h]'s broad noise (top at 10–14 kHz) is gone from /tʃ/; nobody has found its source, and stops may still have it. What's left of /dʒ/ is leads 29, 30 and 31.
+6. **Short /z/, long nasals.** Duration /z/ 2.1 / 1.5 (/dʒ/ closed by experiment 29). The long nasals are mostly closed by
    experiment 25 (/n/ 0.6 / 0.9, /ŋ/ 1.2 / 0.3, /m/ 0 / 0): the plan was right, and the closure landed early.
    What is left of them is lead 17. (The judge's "short /k/" was the aligner on near-silent closures; see "A
    judge correction" below.)
 7. **Bursts.** Measured in experiment 27, see lead 24. Costs now: female /k d t/ 1.87, 1.76, 1.40; male /p/ 2.25.
 8. **The male /ʃ/ centroid**, overshot by batch 2 (3.48 kHz, men 3.13). Cost 0.8. Its peak is low
    (2–2.5 kHz, men 2.5–3.5): the excess is its tail, −2 to −8 dB at 5–10 kHz against the men's −3 to
-   −16. See lead 11.
+   −16. See leads 11 and 29.
 9. **Still open from batch 2:** the protruded-lip tuck's area jump (ignored test in
    `geometry_continuity`), and the clipped /ɝ/ of "bird" the owner preferred "before" for.
 10. **The /s/ front cavity** (from experiment 21). With no low-pass on the source at all, a held /s/
@@ -1503,9 +1499,12 @@ Largest costs first. Costs are the speakers' report, female / male where both.
 23. **Her open phase** (from experiment 27). The folds' area is closed 0.41 of the cycle in every body. Men's are closed relatively longer than women's (Holmberg 1993's abstract, Zhang 2021's model; I saw no numbers). A one-off on her held vowels: open quotient 0.60 → 0.68 takes the steepest fall of flow from 369 to 329 L/s² (his 334), her vowels −3.5, −1.1, −1.6 dB (/a ɛ i/), and H1−H2 +2.6 to +3.0 dB (women's sits 1.1 above hers, the singer's 5.2). It lifts her consonants again, and moves the terms the fold's length left alone. It needs a real value for her open quotient: read Holmberg's tables or Perkell et al. 1994 (revised flow rates) in a library copy. Note male burst /p/ and female level /w/ (1.28, 0.46 of its 0.5 used by experiment 27) before running it.
 24. **A stop's 5 ms is too low-heavy** (from experiment 27). Every stop's burst is dominated by the band under 500 Hz, and has too little above 1 kHz. Before a vowel, dB re the stressed vowels, the loudest 5 ms: women's /t/ −24, −25, −27, −19, −16 in bands to 500 Hz, 1k, 2k, 4k, 8k; the female's −17, −40, −38, −30, −35. Men's −22.5, −25, −25, −19, −24; the male's −10, −35, −30, −26, −28. /p/ in the entry below. Experiment 27 eased the lips' first opening only. The tip and dorsum still open at full rate from contact, but easing them moved duration /tʃ/ (+0.53 in both voices), and they need more high band more than they need less low band. The low band may share a cause with the area rate, the high band with lead 4.
 25. **The lips' starting rate** (from experiment 27). 15 cm²/s passes; 5 cuts male burst /p/ further (−9.2 dB against −8.0, men −13.9) but flips one MFA reading of /θ/ in "every third week", a term sitting on 78 tokens. Once that term has moved, try 5.
-26. **The lungs' port starves every open-glottis consonant** (from experiment 28). Its resistance, 0.5·ρc/A of the trachea, is an acoustic termination, and it also sits in the DC path: 8.2 cmH₂O/(L/s) male, 10.1 female, where real values read about 2–3. At /ʃ/'s flow it eats 4 of the lungs' 8 cmH₂O. A low DC path with the same AC termination gives /ʃ tʃ h/ +2 to +4 dB against the vowels in both voices, Whisper 30.46 → 26.16 %, the singer 0.572 → 0.566. The speakers read 0.967 at best, and it trips terms and three tests that want fixing first: read experiment 28's "Next" for the order. The switches are in `out/e28/lung-forms.patch` (gitignored).
+26. **The lungs' port starves every open-glottis consonant** (from experiment 28). Its resistance, 0.5·ρc/A of the trachea, is an acoustic termination, and it also sits in the DC path: 8.2 cmH₂O/(L/s) male, 10.1 female, where real values read about 2–3. At /ʃ/'s flow it eats 4 of the lungs' 8 cmH₂O. A low DC path with the same AC termination gives /ʃ tʃ h/ +2 to +4 dB against the vowels in both voices, Whisper 30.46 → 26.16 %, the singer 0.572 → 0.566. The speakers read 0.967 at best, and it trips terms and three tests that want fixing first: read experiment 28's "Next" for the order. The switches are in `out/e28/lung-forms.patch` (gitignored). Experiment 29 took away its last break's cause, male duration /dʒ/ at MFA's floor; the fix hasn't been run on top of it.
 27. **/θ/ has no obstacle** (from experiment 28). Its channel runs to the teeth (exit 0.18 / −0.16 cm behind them), but its narrowest section sits 0.67 / 0.90 cm back, past the near fade (0.15–0.5), so it gets the full teeth source. Fading it out on the narrowest section from 1.0 to 1.5 cm reads level /θ/ −24.4 (men −23.9) and −30.5 (women −29.2). Alone it isn't BETTER on my estimate (about −0.004 of score), and it costs M duration /θ/ ("every third week") and, at this fade, M duration /dʒ/. Running the fade from the channel's exit instead (experiment 20's form) costs F duration /tʃ/.
 28. **Sibilants over non-sibilants** (from experiment 28). /ʃ/ over /f/: men 14.8 dB, women 17.1; the synth 4.1, 5.9. Birkholz 2014's fitted gains put an obstacle 10.5 dB over a labiodental source; ours are 2.7 dB apart (the bands differ, so that isn't like for like). On my estimate the constriction source at ×0.41 reads male /f/ about −24 (men −23.6), and her /f/ about −32 (women −24), so it waits on her vowels (lead 23).
+29. **The postalveolar noise peaks low and doesn't fall** (from experiment 29). The judge's window on /ʃ tʃ dʒ/, the median token's peak over a 300 Hz smoothing, and its 8–12 kHz band re 1–12 kHz: women's 3500–3580 Hz, −20; female synth 2340–2570, −8 to −9; men's 2480–2600, −21 to −23; male synth 2060–2210, −9. Bands by kHz, /dʒ/, 1–2, 2–3, 3–4, 4–6, 6–8, 8–12: women's −20 −8 −4 −7 −13 −20, female −15 −3 −10 −12 −17 −9; men's −14 −2 −7 −13 −15 −23, male −9 −4 −11 −10 −9 −9. So the three sounds share it, and the top is a flat floor about 12 dB over theirs (lead 11's fall, and it's what male centroid /ʃ tʃ dʒ/ read, 11.77). Word-initial /dʒ/ is heard as /dr tr/, "drunk yard", "trust claim": my guess is the peak near /ɹ/'s F3, and the "juice" tokens' frication tops at 1.6–2.5 kHz (real 2.2–3.1). I didn't test that. Look at the front cavity (the lips' 0.75 protrusion, before rounded vowels too) and the source's fall.
+30. **/dʒ/'s closure after a pause or obstruent** (from experiment 29). The speakers' first fifth reads −50 / −51 and −53 / −49 below 1.2 kHz; the synth −35 / −34 and −40 / −35: a voice bar they don't have. 22 of 73 female and 20 of 63 male tokens. Experiment 26's rule for /ð/ (folds apart from `t0 − 15 ms`) should carry over. Not run.
+31. **/dʒ/'s closure itself** (from experiment 29). It reads 35 / 30 ms against 55 / 45, and after a vowel the first fifth reads −26 / −24 against −16 / −17, as if it sounded closed before MFA's start. Experiment 26's delay wasn't given to affricates, and /tʃ/ may want it too: stops land 13–27 ms early at the tip. After a liquid MFA reads 80 / 90 ms against 110 / 120, which looks like lead 21.
 
 ### 21. The teeth source's band follows the jet at the teeth, with its power held (kept)
 
@@ -2375,3 +2374,76 @@ use the clean render.
   - **Find real numbers first.** Lower-airway resistance in speech, oral pressure and flow at /ʃ s h/ (Scully; Klatt et al. 1968; Stathopoulos). The R_dc I'd defend is 2–3 from a weak table; the rest of the case is the probe's arithmetic.
   - **Don't retry** v³·√A on the sources. If the ΔP-corrected judge is run again, /s/ against /ʃ/ is what to watch.
   - Her remaining 11 dB is not in the noise: half her extra gap is her vowels (lead 23), and it shouldn't be chased with a gain.
+
+### 29. /dʒ/ has a closure and a frication: its folds part for the release as /tʃ/'s do (kept)
+
+- Hypothesis (batch 3's lead 5, as experiments 22 and 28 asked): the synth's /dʒ/ has no frication. Its folds stay together, so voicing runs through the release, MFA calls that the vowel, and duration /dʒ/ reads 0.61 / 0.69 of a mean phone against the speakers' 1.18 / 1.28. The owner's first complaint was "J sounds are muted".
+- **What I could read.** Nothing I can cite for a value. Two searches found no text of Stevens 1998 or Kent & Read. For Crystal & House they confirm only the citations (1988, JASA 83, 1553–1573, and a note on fricative durations, JASA 84, 1932–1936), not their numbers. One search summary of a Georgian study gives voiced [dʒ] noise of about 35–101 ms, its final closures voiced to varying degrees and releases partly voiced or devoiced: another language, a summary, and nothing rests on it. **So every value here is the TSP speakers'.** "Word-initial /dʒ/ is often devoiced" I can confirm only from the table below, not from the books.
+- **Measured first.** Training tokens, MFA's phones, dB re the stressed vowels, by fifths of the phone, female / male (experiment 22's script):
+
+  | | below 1.2 kHz | 2–10 kHz |
+  |---|---|---|
+  | speakers /dʒ/ | −23 −32 −38 −33 −25 / −20 −27 −32 −33 −20 | −50 −30 −13 −10 −18 / −49 −32 −18 −12 −21 |
+  | speakers /tʃ/ | −36 −39 −37 −35 −34 / −31 −39 −36 −34 −32 | −49 −24 −9 −9 −20 / −41 −21 −11 −12 −24 |
+  | synth /dʒ/ before | −24 −26 −26 −27 −18 / −20 −21 −21 −21 −12 | −38 −41 −36 −30 −28 / −35 −40 −30 −24 −27 |
+
+  **The speakers' /dʒ/ differs from their /tʃ/ at its ends, not its frication.** In the third and fourth fifths its voice is /tʃ/'s, within 1–4 dB. Its noise is too by the fourth, within 1 (the third is 4–7 dB under, as its frication starts later in the phone), and level /dʒ/ −10.2 / −10.5 sits with /tʃ/'s −8.8 / −10.9. It differs in the first fifth (voice carried into the closure) and the last (voice back before the frication ends). So the frication isn't "voiced" in these speakers, and experiment 23's balance ("a glottis about as wide as the constriction") understates it: 0.15 is about that balance here (experiment 23's sweep has 0.16 at 0.18 cm² of glottis, and /ʒ/'s target is 0.22), and its voice ran up to 7–8 dB over theirs.
+
+  By what comes before it (speakers, MFA's ms; below 1.2 kHz by fifths):
+
+  | before | n | female | male |
+  |---|---|---|---|
+  | a vowel | 35 / 28 | 130; −16 −31 −37 −37 −34 | 130; −17 −25 −32 −34 −30 |
+  | an obstruent | 12 / 13 | 80; −53 −42 −39 −33 −15 | 80; −49 −34 −35 −29 −14 |
+  | a pause | 10 / 7 | 80; −50 −36 −40 −31 −10 | 80; −51 −30 −36 −33 −16 |
+  | a liquid | 9 / 9 | 110; −22 −31 −35 −37 −32 | 120; −20 −27 −28 −34 −31 |
+  | a nasal | 7 / 6 | 70; −18 −26 −34 −33 −18 | 70; −15 −22 −29 −21 −9 |
+
+  After a pause or obstruent the closure is silent, as experiment 24 found for /ð/, and the voice comes back in the last fifth at near vowel level. After a vowel the voice fades within about 40 ms and stays down.
+- Change: `planner.rs`: a voiced affricate's folds part from `AFFRICATE_CLOSURE` of the span to `t1`, and `affricate_folds` holds what both affricates share (0.36, closed by `t1`, the ramps). `durations.rs`: `/dʒ/` is (100, 60), the speakers' 100–110 ms phone with Klatt's ratio of minimum to inherent, 30/50. **No new value but the span.** Songs bring their own durations, so there only the folds apply. /dz/ shares the branch, unjudged. New case in `tests/affricates.rs`. Values tried, speakers' training score from 1.045 (F = female, M = male; breaks only):
+
+  | form | score | verdict |
+  |---|---|---|
+  | the log's retry: (90, 54), 0.15, closed by `t1` with a 20 ms ramp | 0.978 | WORSE: F level dʒ +0.62, M centroid dʒ +0.55 |
+  | the same, 0.22 | 0.955 | WORSE: F level dʒ +0.63 |
+  | the same, 0.30 | 0.955 | WORSE: M centroid dʒ +0.51 |
+  | (90, 54), 0.36, closed 10 ms before `t1`, 30 ms ramp | 0.961 | WORSE: M centroid dʒ +0.74 |
+  | (90, 54), 0.36, closed 25 ms before `t1`, 30 ms ramp | 0.969 | WORSE: M centroid dʒ +0.75 |
+  | (100, 60), 0.36, closed 10 ms before `t1`, 30 ms ramp | 0.948 | BETTER (M centroid dʒ +0.47) |
+  | **(100, 60), 0.36, closed by `t1`, 30 ms ramp: /tʃ/'s folds** | **0.946** | **BETTER (M centroid dʒ +0.40)** |
+  | the same, a closure share of 0.55 | 0.951 | WORSE: M centroid dʒ +0.51 |
+
+  **Read this before trusting the last rows.**
+  - **0.36 wasn't my first value.** I started with the log's 0.15, though I had the fifths above, and moved up as 0.15 and 0.22 broke. What argues for it is those fifths and that it adds no value. Its voiced share goes past the speakers' (below).
+  - **100 wasn't my first value either.** 90 is what the log carried, and at 0.36 it breaks M centroid /dʒ/. 100 is within the speakers' 100–110, and I went to it because the phone also read short. It does pass with room: +0.40 against the limit's 0.50.
+  - **Of the two BETTER rows I kept the simpler.** Closing 10 ms earlier matches the speakers' low band in the fourth fifth better on her (−35 against −33, the kept form −41) and worse on him (−28 against −33, kept −35), and it needs a value of its own. I chose before the Whisper reading below.
+  - **The closure share is the thing this doesn't match.** By experiment 22's script the phone is 100 / 100 ms (speakers 110 / 100), the closure 35 / 30 (55 / 45), the frication 55 / 60 (45 / 45). At 0.55 the frication is right (45 / 50), the closure hardly moves (30 / 30) and the phone shrinks (90 / 90). The closure ends 15 ms before the split, as `/tʃ/`'s does.
+- Result in the renders, fifths as above:
+
+  | | below 1.2 kHz | 2–10 kHz |
+  |---|---|---|
+  | speakers | −23 −32 −38 −33 −25 / −20 −27 −32 −33 −20 | −50 −30 −13 −10 −18 / −49 −32 −18 −12 −21 |
+  | before | −24 −26 −26 −27 −18 / −20 −21 −21 −21 −12 | −38 −41 −36 −30 −28 / −35 −40 −30 −24 −27 |
+  | now | −27 −33 −32 −41 −28 / −23 −25 −26 −35 −22 | −43 −34 −24 −22 −26 / −42 −33 −17 −16 −21 |
+
+  - **His frication is now the men's**, within 1–4 dB. Hers is 8–12 dB low: her /ʃ/ gap (leads 3, 23, 26). Level /dʒ/ reads −20.79 / −14.21, with /tʃ/ −21.66 / −14.42 and /ʃ/ −21.19 / −14.38, so it's the same sound now, and no longer the vowel's edge.
+  - **"The juice"** (frames.py, FA01_06 and MA01_06 against the renders): male closure 40–50 ms falling from −37 to −58 dB (real −43 to −55), then 50–60 ms of frication at −30 to −38 (real 60 ms at −35 to −49, rising), vowel −22 (−27). Female closure 50 ms, frication 50–60 ms at −37 to −43 (real 60 ms at −24 to −34), vowel −20 (−20). Real voice mixes with the noise over its last 20–30 ms; the synth's for about 10.
+  - **Still off:** after a pause or obstruent the first fifth reads −35 / −34 and −40 / −35 where the speakers read −50 / −51 and −53 / −49 (lead 30). After a vowel, the first fifth reads −26 / −24 against −16 / −17, and after a liquid MFA reads 80 / 90 ms against 110 / 120 (lead 31).
+  - **Voiced share disagrees.** The judge's YIN gives 0.04 / 0.06 where the speakers read 0.21 / 0.29, and it hardly follows the opening (0.06 / 0.05 at 0.22), though the low band above is about theirs. I didn't look at which of their tokens carry the share.
+- Speakers: 1.045 → **0.946** (training, **BETTER**), 1.169 → 0.995 (held-out). Female 1.580 → 1.369, male 0.510 → 0.523. It's the −0.09 experiment 22 measured.
+  - Groups, female: level 1.38 → 1.39, sibilants 2.83 → 2.30, timing 0.52 → 0.42. Male: level 0.45 → 0.46, sibilants 0.72 → 0.84, timing 0.36 → 0.28. Diagnostics, female: spectrum 1.28 → 1.22, voicing 0.28 → 0.24, formants 1.22 → 1.23, intonation 1.25 → 1.24, voice 0.79. Male: spectrum 1.63 → 1.59, voicing 0.39 → 0.40, formants, voice and intonation unmoved.
+  - Down: duration /dʒ/ 2.68 → 0 (0.61 → 1.11; 1.18), 2.85 → 0 (0.69 → 1.17; 1.28); female centroid /dʒ/ 3.37 → 0.70 (2693 → about 3470 Hz; women 4079); diagnostic spectrum /dʒ/ 3.05 → 0.89, 2.07 → 0.81, female voiced /dʒ/ 1.07 → 0; female duration /ŋ/ 1.69 → 1.54, /n/ 1.07 → 0.98, loudest tenth of bursts 1.14 → 0.98.
+  - Up: **male centroid /dʒ/ 0 → 0.40** (11.63 → 11.78 in log₂ Hz; men 11.59): it read the vowel's edge, and now reads the male noise at /ʃ/'s and /tʃ/'s 11.77 (lead 29). Female level /dʒ/ 1.77 → 1.99, level /t/ 2.61 → 2.81, duration /v/ 1.12 → 1.21; male duration /θ/ 0.81 → 1.02, burst /d/ 0 → 0.16, centroid /ʃ/ 0.72 → 0.83, /s/ 1.38 → 1.46; diagnostic male voiced /dʒ/ 0.01 → 0.32. Only sentences with a /dʒ/ render differently, so those last terms move through how MFA reads those sentences, I'd guess. I didn't look.
+- Whisper: 30.46 → 31.13 % (training; baseline 36.75, BETTER), 36.33 → 35.33 % (held-out; baseline 44.33). **Only one sentence moved, in both voices, and it's the owner's word:** "The juice of lemons" 1 → 2, "juice" → "truth" (male), "droves" (female). "Garbage" and "large" hold. I read the held-out subtotals on the kept form only, after choosing it; no form was picked on them.
+  - **A wider read, since that's one sentence.** Whisper over the speakers' training renders with a /dʒ/ (128 sentences, 136 words; `out/e29/jwords.py`; is the word with the /dʒ/ in what's heard?): **51 → 73** (female 22 → 36, male 29 → 37; 30 gained, 8 lost). Word-initial 17 → 25 of 60, elsewhere 34 → 48 of 76. The forms at 0.15 and at the 10 ms earlier closing both read 65, and I can't separate them from the kept form with this one noisy judge.
+  - **The words the brief asks for**, where a training sentence holds them. "Juice": lost in "The juice" in both voices; gained in the male "Grape juice and water" ("Scrape juice"), still "Grapefruit" in the female. "Jump", "jumped": gained in female "Jump the fence" and "jumped the rusty gate", kept in four, lost in none, and still wrong in the male "rustic gate". "Jar": wrong before and after in both ("ink cloud", "ink flour"). "Judges": no training sentence I can read holds it.
+  - **What's heard instead.** Of the 35 word-initial misses, about 16 have a /dr tr/ word in what's heard ("drunk yard", "trust claim", "dress and swing", "draw"), up from 10 of 43. A rough count: a regex on the sentence. See lead 29.
+- Singer: 0.572 → 0.571 (training; baseline 0.587, BETTER), 0.819 → 0.819 (held-out; baseline 0.811). Guards hold: 0 notes off time, 0 dropped gestures, note MCD 8.545 dB (guard 8.714), envelope correlation 0.821, pitch error 4.80 cents.
+- Speed: `os=2` 18.3 % (baseline's file 24.7 %, best 18.7 %) at load 2–7. Plan timing only.
+- Tests: all pass with the fixtures blessed twice (124 cargo, 2 ignored; 30 bun; typecheck), then restored. `consonant_artifacts` is among them. New `a_voiced_affricate_closes_on_the_voice_and_releases_into_frication` in `tests/affricates.rs`: frication and the gap to the voice as for /tʃ/, and the closing's least share below 1 kHz −1.1 / −1.9 dB against /tʃ/'s −8.5 / −8.6. It fails on the old engine ("no frication"). **Nobody has listened to it.**
+- Verdict: kept. About 50 minutes.
+- Commit: 294ee34.
+- Next:
+  - **Lead 26 (the lungs' port) is the next step.** Experiment 28's last break was male duration /dʒ/ at MFA's 30 ms floor. It reads 1.17 now, cost 0, but I didn't run the fix on top of this. Watch F centroid /dʒ/ and M centroid /dʒ/, which now read the noise and will move with St.
+  - **Lead 29** is what a /dʒ/ most needs for understanding: it's heard as /dr tr/. It shares its cause with /ʃ tʃ/.
+  - **Leads 30 and 31** are this /dʒ/'s remaining shape. Don't retry the openings above: the speakers' fifths say /tʃ/'s, and level /dʒ/ waits on the noise like /ʃ/'s.
