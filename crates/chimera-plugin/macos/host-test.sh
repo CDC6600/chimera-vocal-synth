@@ -52,11 +52,12 @@ dialogs() {
   end tell' 2>/dev/null || true
 }
 
-# Where the Beatbox tab is in the page at zoom 1, from a screenshot of it in WKWebView, and the
-# height of REAPER's title bar and toolbar above the editor. The page zooms out below LAYOUT_MIN
+# Where the Sing and Beatbox tabs are in the page at zoom 1, from screenshots of it in WKWebView, and
+# the height of REAPER's title bar and toolbar above the editor. The page zooms out below LAYOUT_MIN
 # (page_zoom in crates/chimera-plugin/src/bridge.rs).
+SING_X=427
 BEATBOX_X=612
-BEATBOX_Y=26
+TAB_Y=26
 CHROME=54
 LAYOUT_W=1120
 LAYOUT_H=800
@@ -82,8 +83,19 @@ wait_for_nag() {
   echo "::warning::REAPER's nag didn't come and go"
 }
 
+# A tab in the page, wherever the window is and whatever its zoom: x in the page, window's x y w h
+click_tab() {
+  local zoom view_h tab_x tab_y
+  view_h=$(($5 - CHROME))
+  zoom=$(awk -v w="$4" -v h="$view_h" -v lw="$LAYOUT_W" -v lh="$LAYOUT_H" 'BEGIN { z = w / lw; if (h / lh < z) z = h / lh; if (z > 1) z = 1; print z }')
+  tab_x=$(awk -v x="$2" -v z="$zoom" -v t="$1" 'BEGIN { printf "%d", x + z * t }')
+  tab_y=$(awk -v y="$3" -v z="$zoom" -v c="$CHROME" -v t="$TAB_Y" 'BEGIN { printf "%d", y + c + z * t }')
+  echo "zoom $zoom, clicking at $tab_x,$tab_y"
+  cliclick "c:$tab_x,$tab_y"
+}
+
 editor() { # format
-  local fmt=$1 x y w h view_h zoom tab_x tab_y gx gy
+  local fmt=$1 x y w h gx gy
   osascript -e 'tell application "System Events" to tell process "REAPER" to set frontmost to true' 2>&1 || true
   shot "$fmt-open"
   read -r x y w h <<<"$(bounds)" || true
@@ -94,12 +106,7 @@ editor() { # format
     echo "::warning::$fmt shows REAPER's generic sliders, not the plugin's view"
     return 0
   fi
-  view_h=$((h - CHROME))
-  zoom=$(awk -v w="$w" -v h="$view_h" -v lw="$LAYOUT_W" -v lh="$LAYOUT_H" 'BEGIN { z = w / lw; if (h / lh < z) z = h / lh; if (z > 1) z = 1; print z }')
-  tab_x=$(awk -v x="$x" -v z="$zoom" -v t="$BEATBOX_X" 'BEGIN { printf "%d", x + z * t }')
-  tab_y=$(awk -v y="$y" -v z="$zoom" -v c="$CHROME" -v t="$BEATBOX_Y" 'BEGIN { printf "%d", y + c + z * t }')
-  echo "$fmt zoom $zoom, Beatbox tab at $tab_x,$tab_y"
-  cliclick "c:$tab_x,$tab_y"
+  click_tab "$BEATBOX_X" "$x" "$y" "$w" "$h"
   sleep 3
   shot "$fmt-beatbox"
   # the grip, past the corner macOS keeps for resizing the host's window: 12 points in is still its
@@ -124,7 +131,7 @@ hdiutil detach "$work/mnt" >/dev/null || true
 config="$HOME/Library/Application Support/REAPER"
 
 run_reaper() { # formats, and a project to reopen instead of starting afresh
-  local pid deadline marker step answered i
+  local pid deadline marker step answered i bx by bw bh
   rm -f "$out/finished"
   # A first run, unless it's coming back to a project. A launch after REAPER was killed got stuck with
   # nothing on screen to answer, so each one here gets to quit by itself.
@@ -159,6 +166,10 @@ run_reaper() { # formats, and a project to reopen instead of starting afresh
         ready) if [ -z "${2:-}" ]; then wait_for_nag; fi ;;
         editor-*) editor "${step#editor-}" ;;
         shot-*) shot "${step#shot-}" ;;
+        click-sing-*)
+          read -r bx by bw bh <<<"$(bounds)" || true
+          case "${bh:-}" in '' | *[!0-9]*) echo "no window to click" ;; *) click_tab "$SING_X" "$bx" "$by" "$bw" "$bh" ;; esac
+          ;;
         reopened-*)
           bounds >"$out/$step.txt"
           echo "$step window: $(cat "$out/$step.txt")"

@@ -109,8 +109,9 @@ impl WindowHost {
     }
 }
 
-/// A size that fits on the screen in use, host's window included. A window hanging off the screen
-/// would have its grip there too, with no way to make it smaller; the page zooms out to suit.
+/// A size that fits on the screen in use, host's window included, even below the usual minimum: a
+/// window hanging off the screen would have its grip there too, with no way to make it smaller. The
+/// page zooms out to suit.
 fn fit_screen((width, height): (u32, u32)) -> (u32, u32) {
     // SAFETY: class methods on the main thread, where hosts ask for the editor's size
     let screen: *const AnyObject = unsafe { msg_send![class!(NSScreen), mainScreen] };
@@ -119,7 +120,7 @@ fn fit_screen((width, height): (u32, u32)) -> (u32, u32) {
     }
     // SAFETY: an NSScreen, and `visibleFrame` returns a CGRect
     let room: CGRect = unsafe { msg_send![screen, visibleFrame] };
-    (width.min(room.size.width as u32).max(WINDOW_MIN.0), height.min((room.size.height - HOST_CHROME).max(0.0) as u32).max(WINDOW_MIN.1))
+    (width.min(room.size.width as u32).max(1), height.min((room.size.height - HOST_CHROME).max(0.0) as u32).max(1))
 }
 
 /// The pointer on screen (points, y upwards). The page's own coordinates change with its zoom.

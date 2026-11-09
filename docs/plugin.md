@@ -380,16 +380,18 @@ and `host-test/check.ts` judging what comes out. It takes about seven minutes of
 
 - **Each format, as a user would:** it loads, each mode renders, notes come out in tune, Beatbox's kicks and
   pads land on the grid after the host's delay compensation, a hum sits two octaves down, and the formats
-  sound alike. Then the editor opens, notes play through the sound device, a real click picks Beatbox, a
-  real drag on the grip resizes the window, and a bounce follows. Then REAPER quits and comes back, and the
-  saved project returns in its mode and at its size, and bounces the same.
+  are about as loud as each other over time. Then the editor opens, notes play through the sound device, a
+  real click picks Beatbox, a real drag on the grip resizes the window, and a bounce follows. Then REAPER
+  quits and comes back: the saved project returns in its mode and at its size, bounces the same, and its
+  page answers a click.
 - **Every format has to get through every case:** a run that did nothing mustn't pass. REAPER can't set an
   AU's state from a script, so AU covers Sing and what's reachable by clicking, not Speak, pads or the hum.
 - **AU runs alone.** All three bundles hold one binary, so in one process their Objective-C classes share
   names, and a host's lookup of the AU's view fails. REAPER then quietly shows its generic sliders, which
   is what hid the crash above until AU ran by itself.
 - **Formats are compared by loudness over time, not by samples.** With the sound device open, the voice runs
-  on through silence, so it meets the first note in a different state each time.
+  on through silence, so it meets the first note in a different state each time. That's a coarse check: it
+  catches a format gone silent or badly off, and doesn't prove they sound alike.
 - **Rendering at the device's rate.** REAPER prepares plugins at the sound device's 48 kHz, so a bounce at
   another rate changes Beatbox's latency in samples, and a VST3 is then restarted partway through. It cost
   one kick its tail. Likely only that bounce at another rate is affected, and it isn't fixed.

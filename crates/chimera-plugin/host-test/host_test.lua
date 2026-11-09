@@ -286,9 +286,15 @@ local function reopen(project)
     local good, err = pcall(render, format .. "-reopened-bounce", 8.5)
     record({ format = format, case = "reopened-bounce", fx_name = format, pdc = pdc(tr, 0), error = good and "" or tostring(err) })
     reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 1)
+    -- a reopened page that never built would pass all of the above, which only ask the plugin
+    ask("click-sing-" .. format)
+    sleep(1)
+    state = state_of(tr, 0, format)
+    record({ format = format, case = "reopened-click", mode = state:match('\\"mode\\":\\"(%a+)\\"') or "?" })
     reaper.TrackFX_Show(tr, 0, 2)
     sleep(1)
   end
+  reaper.Main_SaveProject(0, false) -- the click changed it, and quitting would ask
 end
 
 local function main()

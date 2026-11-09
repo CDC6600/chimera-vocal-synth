@@ -10,18 +10,17 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 
-/** A hit's start may be off by this much (s). */
-const ON_GRID = 0.02;
+/** A hit's start may be off by this much (s). Measured: 6.4 ms early at most for a kick at 48 kHz, 10.4 for a snare. */
+const ON_GRID = 0.012;
 /** A sung note may be off by this much (cents). */
 const IN_TUNE = 50;
 /** What the host should hear reported in Beatbox (s): BEAT_LATENCY in crates/chimera-plugin/src/core.rs. */
 const BEAT_LATENCY = 0.18;
-/** A host may report it at its device's rate rather than the rendered one (Hz). */
-const RATES = [44100, 48000];
 /**
- * Two renders of one case are the same sound when their loudness over time differs by less than this
- * on average (dB). Not their samples: the voice runs on while it's silent, with the sound device
- * open, so it meets the first note in a different state each time. That difference is inaudible.
+ * Two renders of one case match when their loudness over time differs by less than this on average
+ * (dB). A coarse check, for a format gone silent or badly off, not proof they sound alike. Not their
+ * samples: the voice runs on while it's silent, with the sound device open, so it meets the first note
+ * in a different state each time.
  */
 const SAME_SOUND = 6;
 /** How far macos/host-test.sh drags the grip inwards (points), and what the window may differ by. */
@@ -243,11 +242,17 @@ for (const r of records) {
     check(`${name} project comes back in its mode`, r.mode === "beatbox", `mode ${r.mode}, reported delay ${r.pdc}`);
     check(`${name} project comes back at its size`, r.window === saved[String(r.format)], `saved ${saved[String(r.format)]}, came back ${r.window}`);
     const boundsFile = `${folder}/reopened-${r.format}.txt`;
-    if (existsSync(boundsFile)) {
-      const [, , bw, bh] = readFileSync(boundsFile, "utf8").trim().split(" ").map(Number);
-      const [w, h] = String(r.window).split(",").map(Number);
-      check(`${name} window opens at that size`, Math.abs(w - bw) <= WINDOW_SLACK && Math.abs(h + REAPER_CHROME - bh) <= WINDOW_SLACK, `${bw}x${bh}`);
+    if (!existsSync(boundsFile)) {
+      check(`${name} window opens at that size`, false, "the driver never saw the window");
+      continue;
     }
+    const [, , bw, bh] = readFileSync(boundsFile, "utf8").trim().split(" ").map(Number);
+    const [w, h] = String(r.window).split(",").map(Number);
+    check(`${name} window opens at that size`, Math.abs(w - bw) <= WINDOW_SLACK && Math.abs(h + REAPER_CHROME - bh) <= WINDOW_SLACK, `${bw}x${bh}`);
+    continue;
+  }
+  if (r.case === "reopened-click") {
+    check(`${name} page answers a click`, r.mode === "sing", `mode ${r.mode}`);
     continue;
   }
   if (r.error) {
@@ -258,22 +263,24 @@ for (const r of records) {
     console.log(`skip ${name}: ${r.skipped}`);
     continue;
   }
-  const beat = r.case === "beatbox" || r.case === "pads" || r.case === "hum" || r.case === "clicked" || r.case === "reopened-bounce";
-  const expected = beat ? RATES.map((fs) => BEAT_LATENCY * fs) : [0];
-  check(`${name} reports its delay`, expected.some((e) => Math.abs(Number(r.pdc) - e) <= 1), `${r.pdc} samples, loaded as "${r.fx_name}"`);
   const file = `${folder}/${r.format}-${r.case}.wav`;
   if (!existsSync(file)) {
     check(`${name} rendered`, false, "no file");
     continue;
   }
   const wav = readWav(file);
+  // in samples at the rate it ran at, which the run renders at too: a stale number from another rate
+  // is 14.6 ms off, which the grid alone would let through
+  const beat = r.case === "beatbox" || r.case === "pads" || r.case === "hum" || r.case === "clicked" || r.case === "reopened-bounce";
+  const expected = beat ? BEAT_LATENCY * wav.fs : 0;
+  check(`${name} reports its delay`, Math.abs(Number(r.pdc) - expected) <= 1, `${r.pdc} samples, expected ${expected.toFixed(0)}, loaded as "${r.fx_name}"`);
   judge[r.case as string](name, wav);
   // every format is the same binary, so it should render the same sound
   const first = firstOfCase[r.case as string] ??= { format: String(r.format), wav };
   if (first.wav !== wav) {
     const db = loudnessDifference(first.wav, wav);
     const same = db < SAME_SOUND;
-    check(`${name} sounds like ${first.format}`, same, `loudness differs by ${db.toFixed(1)} dB`);
+    check(`${name} as loud as ${first.format}`, same, `loudness differs by ${db.toFixed(1)} dB`);
     if (!same) {
       console.log(`     ${first.format}: ${spans(first.wav)}`);
       console.log(`     ${r.format}: ${spans(wav)}`);
@@ -282,7 +289,7 @@ for (const r of records) {
 }
 
 for (const format of formatList.split(",")) {
-  const cases = ["sing", ...(format === "AU" ? [] : ["beatbox", "pads", "hum", "speak"]), ...(withEditor ? ["editor", "clicked", "reopened", "reopened-bounce"] : [])];
+  const cases = ["sing", ...(format === "AU" ? [] : ["beatbox", "pads", "hum", "speak"]), ...(withEditor ? ["editor", "clicked", "reopened", "reopened-bounce", "reopened-click"] : [])];
   for (const c of cases) {
     if (!records.some((r) => r.format === format && r.case === c)) check(`${format} ${c}`, false, "never ran");
   }
