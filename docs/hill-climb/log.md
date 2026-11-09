@@ -2720,3 +2720,49 @@ use the clean render.
   - **St is what this cost most.** Lead 11's steeper fall may let it go back up, and it's worth 0.09 of score if it does.
   - **Lead 14:** 0.12 is 0.025 of score with the click test the only thing in its way, at +6.1 on the fixed seed and a median of 5.4.
   - **Don't retry:** an earlier lip gesture for /v/ against the unedited click test (lead 38), or a softer closing corner with the folds apart.
+
+### Batch 3 result (experiments 21–32)
+
+Twelve experiments, two past the planned ten, because the lungs' port (experiment 28) was the
+structural fix the owner asked for. Nine kept (21, 22, 23, 25, 26, 27, 29, 31, 32), three reverted (24,
+28, 30), the last two of which found what 26 and 32 kept. Nobody has listened yet.
+
+| | baseline (e939cf7) | now | a real speaker |
+|---|---|---|---|
+| Speakers, training | 1.646 | 0.806 | 0.277 |
+| Speakers, held-out | 1.710 | 0.859 | 0.243 |
+| Female / male | 2.364 / 0.928 | 1.136 / 0.475 | |
+| Whisper, training | 36.75 % | 27.15 % | 2.7 % over all recordings |
+| Whisper, held-out | 44.33 % | 38.33 % | |
+| Singer, training | 0.587 | 0.443 | |
+| Singer, held-out | 0.811 | 0.601 | |
+| Note MCD | 8.614 dB | 8.431 dB | |
+| Speed, `os=2` | 18.4 % (quiet machine) | 18.5 % | |
+
+Speakers' scores are judge version 2 throughout. Every singer guard holds. The singer's own verdict
+reads WORSE on one term (level 2–4 kHz cost 0 → 0.34), which batch 3's rule doesn't count.
+
+What moved, female then male, in dB re the stressed vowels (speakers in brackets):
+
+| | baseline | now |
+|---|---|---|
+| Level /ʃ/ | −23.2, −14.5 (−7.0, −8.9) | −16.3, −11.8 |
+| Level /tʃ/ | −27.8, −18.5 (−8.8, −10.9) | −16.7, −13.2 |
+| Level /ð/ | −14.0, −10.4 (−22.1, −21.0) | inside the spread |
+| Duration /dʒ/, cost | 3.4, 3.9 | 0, 0 |
+
+Open, largest first:
+
+- **Her sibilants.** /ʃ tʃ/ are still 8–9 dB low, and /s z/ centroids still 2.0 and 2.4 kHz low (cost 3.0
+  and 5.4). Leads 10, 11, 28 and 29.
+- **Her vowels lost 1–4 kHz.** 1–2 kHz −16.2 → −18.4 dB re 0–8 kHz (women −10.8), 2–4 kHz −22.5 → −24.9
+  (women −16.4). Diagnostic, not scored, and a fold-length and open-phase fix darkens a voice by its
+  nature. The owner prefers the darker voice, and should judge whether it has gone too far.
+- **Some constants were picked because they pass.** The agents' entries say which: `lip_open_rate` 7,
+  the teeth source's St 1.0, /tʃ/'s and /dʒ/'s spans. Each is close to a measured or physical value, but
+  none is pinned by one. A break 0.006 over the limit decided the lip rate.
+- **The verdict's breaks read MFA's boundaries and medians across gaps as much as sound.** Several
+  entries show this (lead 32). It held: nothing was kept over a break.
+- **`an_f_does_not_click` rejects real voices.** On its own statistic the training speakers' /v/ reads
+  +16.6 dB (women) and +18.5 dB (men), where its limit is 6, and it blocks fixing a /v/ whose constriction
+  lands late (lead 38). It wasn't changed; the owner's call.

@@ -276,7 +276,7 @@ female 2.36, male 0.93.
    - **The voice lacks presence at 1–4 kHz.** Over the stressed vowels, in dB re 0–8 kHz: at
      1–2 kHz, women −10.8, female synth −16.1, men −10.6, male synth −19.7; at 2–4 kHz, −16.4,
      −22.5, −18.6, −26.4. The male synth still has too much above 4 kHz (−29.6, men −35.0).
-     Before batch 1, the female 1–2 and 2–4 kHz bands were −13.2 and −15.5.
+     Before batch 1, the female 1–2 and 2–4 kHz bands were −13.5 and −15.5.
    - **/u/ is too far back.** F2 is 1160 Hz (women 1570) and 1070 Hz (men 1560).
    - **/z/ and /ð/ are too voiced.** The speakers voice about a third of their frames, the synth
      two thirds or more.
@@ -288,7 +288,10 @@ female 2.36, male 0.93.
 | before batch 1 (5186d64) | 2.001 | 2.143 | 2.92 | 1.08 |
 | after batch 1 (4980e3b) | 1.853 | 1.977 | 2.78 | 0.93 |
 | after batch 2 (e939cf7) | 1.646 | 1.710 | 2.36 | 0.93 |
+| after batch 3 | 0.806 | 0.859 | 1.14 | 0.48 |
 
 - **Batch 1** mostly helped timing (female 1.33 → 0.94, male 0.82 → 0.68).
 - **Batch 2** moved the female /ʃ/ centroid from 2.8 to 3.3 kHz (women 4.0). It overshot the
-  male /ʃ/ (3.27 → 3.48 kHz, men 3.13). No batch moved the female sibilant levels.
+  male /ʃ/ (3.27 → 3.48 kHz, men 3.13). It didn't move the female sibilant levels.
+- **Batch 3**, which this judge decided, did: the female /ʃ/ went from −23 to −16 dB (women −7). See
+  [hill-climb/log.md](hill-climb/log.md), "Batch 3 result", for what is left.
