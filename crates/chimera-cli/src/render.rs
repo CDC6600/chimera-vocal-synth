@@ -380,7 +380,7 @@ pub const TELE_VERSION: u32 = 1;
 /// flow (nPh+nOr), glottalArea (nScope), glottalFlow (nScope); no gesture labels.
 /// Frame i is the state at sample i·hop (frame 0 before any sound); its RMS levels cover the hop
 /// before it. A last partial hop gets no frame.
-struct TeleRecorder {
+pub(crate) struct TeleRecorder {
     t: VoiceTelemetry,
     data: Vec<f32>,
     frames: u32,
@@ -389,7 +389,7 @@ struct TeleRecorder {
 }
 
 impl TeleRecorder {
-    fn new(v: &mut HumanVoice) -> Self {
+    pub(crate) fn new(v: &mut HumanVoice) -> Self {
         let mut r = TeleRecorder { t: VoiceTelemetry::default(), data: Vec::new(), frames: 0, n_ph: 0, n_or: 0 };
         v.telemetry(&mut r.t);
         r.n_ph = r.t.ph_areas.len();
@@ -402,7 +402,7 @@ impl TeleRecorder {
         11 + N_ARTIC + 3 * (self.n_ph + self.n_or) + 2 * TELE_SCOPE
     }
 
-    fn snap(&mut self, v: &mut HumanVoice) -> Result<(), String> {
+    pub(crate) fn snap(&mut self, v: &mut HumanVoice) -> Result<(), String> {
         v.telemetry(&mut self.t);
         if self.t.ph_areas.len() != self.n_ph || self.t.or_areas.len() != self.n_or {
             return Err("the airway's section count changed during the render".into());
@@ -426,7 +426,7 @@ impl TeleRecorder {
         debug_assert_eq!(self.data.len(), self.frames as usize * self.frame_len());
     }
 
-    fn bytes(&self, body: BodyMix) -> Vec<u8> {
+    pub(crate) fn bytes(&self, body: BodyMix) -> Vec<u8> {
         let mut b = Vec::with_capacity(48 + 4 * self.data.len());
         b.extend_from_slice(b"CHTL");
         for x in [TELE_VERSION, FS as u32, TELE_HOP as u32, self.frames, self.frame_len() as u32, N_ARTIC as u32, self.n_ph as u32, self.n_or as u32, TELE_SCOPE as u32] {

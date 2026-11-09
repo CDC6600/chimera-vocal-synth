@@ -26,6 +26,175 @@ fn tmp(name: &str) -> String {
 }
 
 #[test]
+fn render_track_keeps_audio_and_telemetry_on_the_same_clock() {
+    let input = tmp("track.json");
+    let output = tmp("track.wav");
+    let tele = tmp("track.tele");
+    let frames: Vec<_> = (0..50).map(|i| serde_json::json!({
+        "f0": if i < 25 { 220.0 } else { 110.0 },
+        "gate": if (5..45).contains(&i) { 1.0 } else { 0.0 }
+    })).collect();
+    std::fs::write(&input, serde_json::json!({
+        "rate": 50, "source": {"glide": 0.01, "drift": 0}, "frames": frames
+    }).to_string()).unwrap();
+    chimera(&["render", "track", &input, &output, "male", "--tele", &tele, "--float"]);
+    let wav = std::fs::read(&output).unwrap();
+    let samples: Vec<f32> = wav[44..].chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
+    assert_eq!(samples.len(), 48000, "a one-second track has no added lead or tail");
+    assert!(samples.iter().all(|x| x.is_finite()));
+    assert!(samples[..2400].iter().all(|x| x.abs() < 1e-6), "the first frame is silent");
+    for (start, hz) in [(14400, 220.0), (33600, 110.0)] {
+        let frame: Vec<_> = samples[start..start + 4096].iter().map(|x| *x as f64).collect();
+        let pitch = chimera::analysis::pitch::yin_pitch(&frame, 48000.0, Default::default());
+        assert!((pitch.f0 - hz).abs() < 5.0, "expected {hz} Hz, got {}", pitch.f0);
+    }
+    let bytes = std::fs::read(&tele).unwrap();
+    assert_eq!(&bytes[..4], b"CHTL");
+    let u = |i| u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()) as usize;
+    assert_eq!((u(8), u(12), u(16)), (48000, 768, 63));
+    let len = u(20);
+    assert_eq!(bytes.len(), 48 + 63 * len * 4);
+    for i in 0..63 {
+        let at = 48 + (i * len + 10) * 4;
+        let clock = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        assert!((clock as f64 - i as f64 * 768.0 / 48000.0).abs() < 1e-6);
+    }
+    chimera(&["render", "track", &input, &output, "male", "--float"]);
+    assert_eq!(wav, std::fs::read(output).unwrap(), "telemetry does not change the audio");
+}
+
+#[test]
+fn render_track_rejects_invalid_timing_and_controls() {
+    for (i, track) in [
+        serde_json::json!({"rate": 0, "frames": [{"f0": 110, "gate": 1}]}),
+        serde_json::json!({"rate": 59, "frames": [{"f0": 110, "gate": 1}]}),
+        serde_json::json!({"rate": 50, "frames": []}),
+        serde_json::json!({"rate": 50, "frames": [{"f0": 0, "gate": 1}]}),
+        serde_json::json!({"rate": 50, "frames": [{"f0": 110, "gate": 2}]}),
+        serde_json::json!({"rate": 50, "phonation": {"jitter": 0.2}, "frames": [{"f0": 110, "gate": 1}]}),
+        serde_json::json!({"rate": 50, "phonation": {"alternatingAttenuation": 1.1}, "frames": [{"f0": 110, "gate": 1}]}),
+        serde_json::json!({"rate": 50, "frames": [{"f0": 110, "gate": 1, "alternatingAttenuation": -0.1}]}),
+    ].iter().enumerate() {
+        let input = tmp(&format!("bad-track-{i}.json"));
+        let output = tmp(&format!("bad-track-{i}.wav"));
+        let _ = std::fs::remove_file(&output);
+        std::fs::write(&input, track.to_string()).unwrap();
+        let result = Command::new(env!("CARGO_BIN_EXE_chimera"))
+            .args(["render", "track", &input, &output]).output().unwrap();
+        assert!(!result.status.success());
+        assert!(!std::path::Path::new(&output).exists());
+    }
+}
+
+#[test]
+fn render_track_can_sustain_regular_subharmonics_without_random_roughness() {
+    let input = tmp("subharmonic-track.json");
+    let output = tmp("subharmonic-track.wav");
+    let frames: Vec<_> = (0..100).map(|_| serde_json::json!({"f0": 148.5, "gate": 1})).collect();
+    std::fs::write(&input, serde_json::json!({
+        "rate": 50,
+        "source": {"roughness": 0, "drift": 0, "breathiness": 0.03, "tension": 0.8},
+        "phonation": {"alternatingAttenuation": 0.85, "jitter": 0, "shimmer": 0},
+        "frames": frames
+    }).to_string()).unwrap();
+    chimera(&["render", "track", &input, &output, "male", "--float"]);
+    let bytes = std::fs::read(output).unwrap();
+    let audio: Vec<f64> = bytes[44..].chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap()) as f64).collect();
+    let pitch = chimera::analysis::pitch::yin_pitch(&audio[48000..52100], 48000.0,
+        chimera::analysis::pitch::YinOpts { threshold: Some(0.08), ..Default::default() });
+    assert!((pitch.f0 - 74.25).abs() < 1.0, "expected a 74.25 Hz repetition rate, got {}", pitch.f0);
+    assert!(pitch.aperiodicity < 0.02, "the repeated pair of pulses must remain regular");
+}
+
+#[test]
+fn render_track_follows_a_continuous_low_pitch_curve() {
+    let input = tmp("continuous-pitch.json");
+    let output = tmp("continuous-pitch.wav");
+    let target = |t: f64| 65.0 + 12.0 * chimera::math::sin(chimera::math::TAU * 0.35 * t);
+    let frames: Vec<_> = (0..800).map(|i| serde_json::json!({
+        "f0": target(i as f64 / 200.0), "gate": 1
+    })).collect();
+    std::fs::write(&input, serde_json::json!({
+        "rate": 200,
+        "source": {"glide": 0.015, "roughness": 0, "drift": 0, "breathiness": 0.03},
+        "frames": frames
+    }).to_string()).unwrap();
+    chimera(&["render", "track", &input, &output, "male", "--float"]);
+    let bytes = std::fs::read(output).unwrap();
+    let audio: Vec<f64> = bytes[44..].chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap()) as f64).collect();
+    for t in [0.4, 0.7, 1.1, 1.5, 1.9, 2.3, 2.7, 3.1, 3.5] {
+        let start = ((t - 0.05) * 48000.0) as usize;
+        let pitch = chimera::analysis::pitch::yin_pitch(&audio[start..start + 4800], 48000.0,
+            chimera::analysis::pitch::YinOpts { min_f0: Some(45.0), max_f0: Some(90.0), ..Default::default() });
+        let expected = target(t - 0.015);
+        let cents = 1200.0 * (pitch.f0 / expected).log2();
+        assert!(cents.abs() < 35.0, "at {t}s: expected {expected} Hz, got {} Hz", pitch.f0);
+    }
+}
+
+#[test]
+fn render_track_honors_an_independent_tongue_tip_target() {
+    let mut observed = Vec::new();
+    for tip_free in [true, false] {
+        let input = tmp(&format!("tip-{tip_free}.json"));
+        let output = tmp(&format!("tip-{tip_free}.wav"));
+        let tele = tmp(&format!("tip-{tip_free}.tele"));
+        let frames: Vec<_> = (0..30).map(|_| serde_json::json!({
+            "f0": 150, "gate": 1, "tipFree": tip_free,
+            "artic": {"ttX": 5.8, "ttY": 8.5}
+        })).collect();
+        std::fs::write(&input, serde_json::json!({"rate": 50, "frames": frames}).to_string()).unwrap();
+        chimera(&["render", "track", &input, &output, "male", "--tele", &tele]);
+        let bytes = std::fs::read(tele).unwrap();
+        let u = |i| u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()) as usize;
+        let offset = 48 + ((u(16) - 1) * u(20) + 11 + 4) * 4;
+        observed.push(f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()));
+    }
+    assert!((observed[1] - 8.5).abs() < 0.02, "the supplied tip height must persist");
+    assert!((observed[0] - observed[1]).abs() > 0.3, "automatic tip placement must differ");
+}
+
+#[test]
+fn render_track_can_focus_a_high_harmonic_while_retaining_the_low_voice() {
+    let input = tmp("focused-tract.json");
+    let output = tmp("focused-tract.wav");
+    let articulation = serde_json::json!({
+        "tbX": 2.81046, "tbY": 5.77136, "ttX": 6.60223, "ttY": 8.93349,
+        "jaw": 0.67253, "lipAp": 0.20090, "lipProt": 0.55066, "lipWidth": 0.35,
+        "root": 0.36976, "larynx": -0.28730, "epilarynx": 0.6, "ventricular": 0.5, "velum": 0
+    });
+    let frames: Vec<_> = (0..100).map(|_| serde_json::json!({
+        "f0": 150, "gate": 1, "tipFree": false, "artic": articulation
+    })).collect();
+    std::fs::write(&input, serde_json::json!({
+        "rate": 50, "frames": frames,
+        "source": {"tension": 0.85, "brightness": 0.5, "pressure": 9.5, "breathiness": 0.025, "drift": 0},
+        "phonation": {"alternatingAttenuation": 0.85, "jitter": 0, "shimmer": 0}
+    }).to_string()).unwrap();
+    chimera(&["render", "track", &input, &output, "male", "--float"]);
+    let bytes = std::fs::read(output).unwrap();
+    let samples: Vec<f64> = bytes[44..].chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap()) as f64).collect();
+    let amplitude = |hz: f64| {
+        let (mut real, mut imaginary) = (0.0, 0.0);
+        for (i, sample) in samples[48000..72000].iter().enumerate() {
+            let phase = chimera::math::TAU * hz * i as f64 / 48000.0;
+            real += sample * chimera::math::cos(phase);
+            imaginary += sample * chimera::math::sin(phase);
+        }
+        (real * real + imaginary * imaginary).sqrt() / 12000.0
+    };
+    let high = amplitude(1500.0);
+    let rms = (samples[48000..72000].iter().map(|x| x * x).sum::<f64>() / 24000.0).sqrt();
+    assert!(high > 2.0 * (amplitude(1350.0) * amplitude(1650.0)).sqrt(), "the target harmonic must stand above its neighbors");
+    assert!(amplitude(150.0) > 0.15 * rms, "the low voice must remain strong relative to the whole signal");
+    assert!(high > 0.15 * rms, "the focused harmonic must remain strong relative to the whole signal");
+}
+
+#[test]
 fn render_speech_writes_a_sounding_wav_of_the_planned_length() {
     let stem = tmp("hello");
     let stdout = chimera(&["render", "speech", &stem, "ˈhɛloʊ"]);

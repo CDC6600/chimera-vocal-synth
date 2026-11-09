@@ -8,6 +8,7 @@ mod compare;
 mod diagnose;
 mod js;
 mod render;
+mod track;
 mod wav;
 
 use chimera::anatomy::human::{BODY_CHILD, BODY_FEMALE, BODY_MALE, BodyMix, HumanBody};
@@ -21,6 +22,8 @@ usage: chimera <command> [args] [--float]
   render song    [outdir] [male|female|child]
   render notes   <in.json> <out> [male|female|child] [--artic tracks.json] [--tele voice.tele]
                  (melody file; midi <= 0 is a rest; --artic also writes the articulators at 100 Hz)
+  render track   <in.json> <out> [male|female|child] [--tele voice.tele]
+                 (timed pitch, breath and articulation frames, with optional source settings)
   render beatbox [outdir] [preset name | pattern] [male|female|child] [bpm] [bars]
   render creature [creatureId] [outdir]
   render vowels  [male|female|child] [out]
@@ -103,6 +106,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 "text" => render::text(&ctx, rest),
                 "song" => render::song(&ctx, rest),
                 "notes" => render::notes(&ctx, rest),
+                "track" => track::render(&ctx, rest),
                 "beatbox" => render::beatbox(&ctx, rest),
                 "creature" => render::creature(&ctx, rest),
                 "vowels" => render::vowels(&ctx, rest),
