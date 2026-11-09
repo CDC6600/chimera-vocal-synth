@@ -53,6 +53,9 @@ bun tools/musicxml-to-notes.ts score.mxl P1 --out p1.json   # a score's part →
   display look.
 - [docs/csd-comparison.md](docs/csd-comparison.md): scoring the voice against the Children's
   Song Dataset.
+- [docs/control-tracks.md](docs/control-tracks.md): timed pitch, breath, and independent
+  tongue-tip controls for offline renders.
+- [examples/bass-overtone/](examples/bass-overtone/): a synthetic bass and focused-harmonic demo.
 - [docs/speech-comparison.md](docs/speech-comparison.md): scoring the speech against real
   speakers, phone by phone (the TSP speech database).
 - [docs/hill-climb/](docs/hill-climb/): the rules and log for tuning the voice one measured

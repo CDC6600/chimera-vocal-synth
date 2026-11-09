@@ -1,0 +1,45 @@
+{
+  "rate": 2,
+  "source": {
+    "tension": 0.85,
+    "brightness": 0.5,
+    "pressure": 9.5,
+    "breathiness": 0.025,
+    "roughness": 0,
+    "drift": 0
+  },
+  "phonation": {
+    "alternatingAttenuation": 0.85,
+    "diplophonia": 0,
+    "jitter": 0,
+    "shimmer": 0
+  },
+  "frames": [
+    { "f0": 150, "gate": 1, "alternatingAttenuation": 0 },
+    { "f0": 150, "gate": 1, "alternatingAttenuation": 0 },
+    { "f0": 150, "gate": 1, "alternatingAttenuation": 0 },
+    { "f0": 150, "gate": 1, "alternatingAttenuation": 0 },
+    { "f0": 150, "gate": 1 },
+    { "f0": 150, "gate": 1 },
+    { "f0": 150, "gate": 1 },
+    { "f0": 150, "gate": 1 },
+    {
+      "f0": 150,
+      "gate": 1,
+      "tipFree": false,
+      "artic": {
+        "tbX": 2.81046, "tbY": 5.77136, "ttX": 6.60223, "ttY": 8.93349,
+        "jaw": 0.67253, "lipAp": 0.20090, "lipProt": 0.55066, "lipWidth": 0.35,
+        "root": 0.36976, "larynx": -0.28730, "epilarynx": 0.6,
+        "ventricular": 0.5, "velum": 0
+      }
+    },
+    { "f0": 150, "gate": 1, "tipFree": false },
+    { "f0": 150, "gate": 1, "tipFree": false },
+    { "f0": 150, "gate": 1, "tipFree": false },
+    { "f0": 150, "gate": 1, "tipFree": false },
+    { "f0": 150, "gate": 1, "tipFree": false },
+    { "f0": 150, "gate": 0, "tipFree": false },
+    { "f0": 150, "gate": 0, "tipFree": false }
+  ]
+}
