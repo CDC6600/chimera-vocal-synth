@@ -41,6 +41,9 @@ pub struct GlottisParams {
     pub fry: f64,
     /// diplophonia / period doubling 0..1 (alternating amplitude & period)
     pub diplophonia: f64,
+    /// Fraction of every other area pulse suppressed, without changing its period.
+    /// This approximates alternate-pulse damping in bass throat singing, not a second fold oscillator.
+    pub alternating_attenuation: f64,
     /// extra glottal closure force 0..1 (glottal stop / ejective: holds the folds shut)
     pub closure: f64,
     /// bifurcation 0..1: a logistic map drives per-cycle period and amplitude. Rising values walk
@@ -64,6 +67,7 @@ pub const DEFAULT_GLOTTIS: GlottisParams = GlottisParams {
     drift: 6.0,
     fry: 0.0,
     diplophonia: 0.0,
+    alternating_attenuation: 0.0,
     closure: 0.0,
     chaos: 0.0,
 };
@@ -196,6 +200,9 @@ impl ParametricGlottis {
             self.cycle_period_scale = 1.0 + p.jitter * self.rng.gauss() + p.diplophonia * 0.08 * alt + chaos_p;
             self.cycle_period_scale = clamp(self.cycle_period_scale, 0.55, 1.8);
             self.cycle_amp = js_max(0.12, 1.0 + p.shimmer * self.rng.gauss() - p.diplophonia * 0.35 * (if alt > 0.0 { 1.0 } else { 0.0 }) + chaos_a);
+            if p.alternating_attenuation > 0.0 && alt > 0.0 {
+                self.cycle_amp *= 1.0 - clamp(p.alternating_attenuation, 0.0, 1.0);
+            }
         }
 
         // pulse shape within the cycle
