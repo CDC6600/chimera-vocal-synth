@@ -1436,9 +1436,7 @@ Largest costs first. Costs are the speakers' report, female / male where both.
    corner, see lead 10.
 2. **/ð v/ too loud.** Closed by experiments 23 and 26: level /v/ 0 / 0.7, level /ð/ 0.2 / 0.5. Lead 3 is no longer blocked by it.
 3. **The female source.** Taken a step by experiment 27: the pulse follows the fold's length, her vowels 2 dB lower against her consonants. /ʃ tʃ/ are still 13–14 dB low, and her flow still falls 1.10 times as fast as his, where real women's is slower. Lead 23 (her open phase) is next, then lead 4.
-4. **How turbulence scales.** The sources follow Re² ∝ ΔP·A; Stevens' scaling, ΔP^1.5·A^0.5, lifts
-   narrow jets and small bodies (experiment 13's "Next"). After experiment 27 the female voiceless consonants still stand 4–9 dB further from
-   the women than the male's from the men (/ʃ/ 14.2 against 5.5, /h/ 11.5 against 3.1). The male /ʃ tʃ/ cost 2.3, 1.4.
+4. **How turbulence scales.** Closed by experiment 28: Stevens' v³·√A doesn't explain the gap, and it lifts /s/ 5 dB over /ʃ/, the wrong way. It gives her 0.5 of /ʃ/'s extra 8.7 dB. What the probe found instead is lead 26.
 5. **Affricates.** /tʃ/ closed by experiment 22: a closure and 60 ms of frication, voicing as it ends, and
    level /tʃ/ now reads frication (cost 9.2 / 1.9, the same gap as /ʃ/, lead 3). /dʒ/ is open: its folds
    stay together, so it has no frication and MFA reads it as a closure (duration 3.0 / 2.8). The fix is
@@ -1505,6 +1503,9 @@ Largest costs first. Costs are the speakers' report, female / male where both.
 23. **Her open phase** (from experiment 27). The folds' area is closed 0.41 of the cycle in every body. Men's are closed relatively longer than women's (Holmberg 1993's abstract, Zhang 2021's model; I saw no numbers). A one-off on her held vowels: open quotient 0.60 → 0.68 takes the steepest fall of flow from 369 to 329 L/s² (his 334), her vowels −3.5, −1.1, −1.6 dB (/a ɛ i/), and H1−H2 +2.6 to +3.0 dB (women's sits 1.1 above hers, the singer's 5.2). It lifts her consonants again, and moves the terms the fold's length left alone. It needs a real value for her open quotient: read Holmberg's tables or Perkell et al. 1994 (revised flow rates) in a library copy. Note male burst /p/ and female level /w/ (1.28, 0.46 of its 0.5 used by experiment 27) before running it.
 24. **A stop's 5 ms is too low-heavy** (from experiment 27). Every stop's burst is dominated by the band under 500 Hz, and has too little above 1 kHz. Before a vowel, dB re the stressed vowels, the loudest 5 ms: women's /t/ −24, −25, −27, −19, −16 in bands to 500 Hz, 1k, 2k, 4k, 8k; the female's −17, −40, −38, −30, −35. Men's −22.5, −25, −25, −19, −24; the male's −10, −35, −30, −26, −28. /p/ in the entry below. Experiment 27 eased the lips' first opening only. The tip and dorsum still open at full rate from contact, but easing them moved duration /tʃ/ (+0.53 in both voices), and they need more high band more than they need less low band. The low band may share a cause with the area rate, the high band with lead 4.
 25. **The lips' starting rate** (from experiment 27). 15 cm²/s passes; 5 cuts male burst /p/ further (−9.2 dB against −8.0, men −13.9) but flips one MFA reading of /θ/ in "every third week", a term sitting on 78 tokens. Once that term has moved, try 5.
+26. **The lungs' port starves every open-glottis consonant** (from experiment 28). Its resistance, 0.5·ρc/A of the trachea, is an acoustic termination, and it also sits in the DC path: 8.2 cmH₂O/(L/s) male, 10.1 female, where real values read about 2–3. At /ʃ/'s flow it eats 4 of the lungs' 8 cmH₂O. A low DC path with the same AC termination gives /ʃ tʃ h/ +2 to +4 dB against the vowels in both voices, Whisper 30.46 → 26.16 %, the singer 0.572 → 0.566. The speakers read 0.967 at best, and it trips terms and three tests that want fixing first: read experiment 28's "Next" for the order. The switches are in `out/e28/lung-forms.patch` (gitignored).
+27. **/θ/ has no obstacle** (from experiment 28). Its channel runs to the teeth (exit 0.18 / −0.16 cm behind them), but its narrowest section sits 0.67 / 0.90 cm back, past the near fade (0.15–0.5), so it gets the full teeth source. Fading it out on the narrowest section from 1.0 to 1.5 cm reads level /θ/ −24.4 (men −23.9) and −30.5 (women −29.2). Alone it isn't BETTER on my estimate (about −0.004 of score), and it costs M duration /θ/ ("every third week") and, at this fade, M duration /dʒ/. Running the fade from the channel's exit instead (experiment 20's form) costs F duration /tʃ/.
+28. **Sibilants over non-sibilants** (from experiment 28). /ʃ/ over /f/: men 14.8 dB, women 17.1; the synth 4.1, 5.9. Birkholz 2014's fitted gains put an obstacle 10.5 dB over a labiodental source; ours are 2.7 dB apart (the bands differ, so that isn't like for like). On my estimate the constriction source at ×0.41 reads male /f/ about −24 (men −23.6), and her /f/ about −32 (women −24), so it waits on her vowels (lead 23).
 
 ### 21. The teeth source's band follows the jet at the teeth, with its power held (kept)
 
@@ -2273,3 +2274,104 @@ use the clean render.
   - Then **how turbulence scales (lead 4)** for what's left.
   - **Stops' low and high bands (lead 24)**, which also holds what's left of female bursts /t k d/.
   - **Lead 14's wider /v z/** was waiting on her frication gap; level /z/ is now 0.47, so check it again.
+
+### 28. How turbulence scales: Stevens' law doesn't explain the gap, and the lungs' port starves the jets (reverted: 15 forms, none BETTER)
+
+- Hypothesis (batch 3's lead 4): the sources follow Re² ∝ v²·A, and Stevens' scaling, v³·√A = ΔP^1.5·A^0.5 up to a constant, lifts narrow jets and small bodies. Both voices are short on /ʃ tʃ h/, so a shared cause in the noise, with more of it in the smaller body. **The probe says otherwise, and found a different shared cause, so I took that instead (below).**
+- **What I could read.**
+  - Birkholz 2014 (ISSP, in full): "According to Stevens (1998), p. 103", p_s = G·|v|³·√A, with v low-passed at 500 Hz. Noise through a first-order low-pass at 0.15·v/d (Stevens 1998, p. 104) for lingual sources, 6 kHz for labiodental and glottal ones. G fitted by analysis by synthesis: obstacle 10, wall 5, labiodental 3, aspiration 0.005–0.5. It credits Badin et al. 1995 with L = k·A^a·Δp^b fitted per place.
+  - Jackson & Shadle 2000 (preprint, the passage): Scully's source from Stevens 1971, p_s ∝ ΔP^1.5; Narayanan & Alwan's dipoles at the lips for /f v θ ð/ and the teeth for /s z/.
+  - Stevens 1971: only search summaries of the text ("weakly dependent on the cross-sectional area"; a dipole's sound power "in an infinite pipe is proportional to V⁴"). **Not read:** Stevens 1998 itself, Shadle's thesis (the fetch failed), so her "about 20 dB" stays unverified, and Krane beyond experiment 21.
+- **The law, at the operating points.** Medians over the plan's middle half, 20 training Harvard sentences per voice. ΔP runs from the pharynx's top to the lips. "Law" is what v³·√A adds to v²·A, in dB re the male /ʃ/. "Gap" is the judge's distance from the speakers (+ is too loud).
+
+  | | ΔP (cmH₂O) | A (cm²) | v (m/s) | U (cm³/s) | law | gap |
+  |---|---|---|---|---|---|---|
+  | male /ʃ/ | 2.80 | 0.205 | 23.9 | 490 | 0 | −5.5 |
+  | female /ʃ/ | 2.91 | 0.167 | 22.9 | 383 | +0.5 | −14.2 |
+  | male /tʃ/ | 3.00 | 0.193 | 22.9 | 444 | −0.1 | −3.6 |
+  | female /tʃ/ | 3.27 | 0.156 | 22.6 | 352 | +0.7 | −13.0 |
+  | male /s/ | 4.65 | 0.093 | 28.6 | 264 | +5.0 | −2.3 |
+  | female /s/ | 4.77 | 0.075 | 27.9 | 209 | +5.7 | −7.0 |
+  | male /f/ | 2.13 | 0.168 | 18.9 | 318 | −1.2 | +5.1 |
+  | female /f/ | 2.42 | 0.132 | 20.8 | 275 | +0.7 | −3.1 |
+  | male /θ/ | 3.55 | 0.176 | 28.1 | 495 | +2.1 | +5.7 |
+  | female /θ/ | 3.63 | 0.147 | 26.1 | 385 | +2.2 | +3.5 |
+  | male /h/ (glottis) | 2.02 | 0.345 | 19.4 | 671 | −4.1 | −3.1 |
+  | female /h/ (glottis) | 2.02 | 0.279 | 19.5 | 544 | −3.1 | −11.5 |
+
+  - **Her extra gap isn't in the law.** Over his, she is short by a further 8.7 dB at /ʃ/, 9.4 at /tʃ/, 4.7 at /s/, 8.4 at /h/. The law returns 0.5, 0.8, 0.7, 1.0. Her v is what his is, and √A differs by k.
+  - **Where her extra 8.7 goes.** Absolute levels at equal output gain, MFA's windows on the best run's training renders: her stressed vowels stand 4.1 dB over his, her /ʃ/ 2.6 under. Women's /ʃ/ reads 1.9 over men's against the vowels. 4.1 + 2.6 + 1.9 = 8.6. So half is her vowels (lead 23), and the law gives back 0.5 of the source's 2.6.
+  - **/ʃ/ against /s/ goes the wrong way.** v²·A gives the male /ʃ/ 3.7 dB over /s/ at the source. In the judge's terms the women's /ʃ/ reads 3.9 dB over their /s/ (−7.0, −10.9), and the men's level with it (−8.9, −9.0). v³·√A puts /s/ 1.3 dB over /ʃ/, and /ʃ/ is the one that's low.
+  - **Why Re² may be the right form here** (my argument, not read anywhere). A force F' ∝ ρv²A on the obstacle gives a plane-wave pressure F'/A_duct in a duct, so amplitude ∝ v²·A, the Re² law, and power ∝ V⁴, as the summary of Stevens 1971 has it for a pipe. A free-field dipole radiates dF'/dt ∝ F'·f, f ∝ v/√A: amplitude ∝ v³·√A, the same law with the radiation in it. This network already radiates the derivative of the flow. I didn't test this argument beyond the judges below.
+  - **Judged.** v³·√A with its amplitude held at the male /ʃ/'s operating point (no gain changed, the glottis on the same anchor): 1.045 → 1.068, WORSE (F duration /h/ 0.85 → 4.28, levels /h/ and /ʃ/). On the lung fix below, against that fix alone: 0.976 against 0.967. female /s/ comes within a spread of the women's (−15.98 → −13.87, women −10.88), and /ʃ/ falls (−17.97 → −19.07, −11.21 → −12.56). The form doesn't help, so I didn't take it further or re-derive gains for it.
+- **What the probe did show: ΔP is the shared cause.** /ʃ/ reads 2.8 cmH₂O across its constriction and 1.2 across the glottis. That's 4 of the lungs' 8, and the other 4 go in the port from the lungs to the trachea. Its `resistance(0.5·ρc/A)` (since the first Rust port, b32778e) is half the trachea's characteristic impedance, an acoustic termination, but it also sits in series with the DC flow: 8.2 cmH₂O/(L/s) male, 10.1 female. At 490 cm³/s it drops 4.0 cmH₂O.
+  - **The real value.** A review page's table (Urbankowski & Przybylowski 2016, as that page reports it, and it says the table has no cited experimental source): mouth and pharynx 0.5, trachea and main bronchi 0.5, peripheral bronchi 0.2, lung tissue 0.2, chest wall 1.2 cmH₂O/(L/s). D'Angelo 1994 on the same page has tissue about 1.5 in all. One modelling paper uses 2. Without the mouth, about 2–3. **That's a weak source for the number, and I found nothing speech-specific.** The direction isn't in doubt: 8–10 is several times any of them.
+  - **Not verified.** I couldn't reach the classic oral pressure and flow data (Scully, Klatt, Stefanski & Stevens 1968, Isshiki & Ringel 1964). From memory /h/ reaches about 1 L/s and voiceless fricatives 5–7 cmH₂O of oral pressure; one paper I saw gives 3–15 cmH₂O over languages. Check them.
+- Change (all reverted; switches in `out/e28/lung-forms.patch`): the DC path. The port keeps its resistance R for sound, and the lungs' pressure rises by (R − R_dc)·LP[U] per internal sample. So Z = R_dc + (R − R_dc)·s/(s + ωc), a passive series R_dc and (R − R_dc) in parallel with an inductance. With an inertance of 0.01–0.02 cmH₂O·s²/L (a textbook-range value from a modelling paper, not measured) the corner is about 65 Hz, under f0. I ran 80, and 40 once: no real difference. R_dc scales as 1/k², as R does.
+  - **What it does at R_dc = 2:**
+
+    | | ΔP | U | v | level, before → after | people |
+    |---|---|---|---|---|---|
+    | male /ʃ/ | 2.80 → 4.47 | 490 → 633 | 23.9 → 30.8 | −14.38 → −11.21 | −8.88 |
+    | female /ʃ/ | 2.91 → 4.64 | 383 → 487 | 22.9 → 29.1 | −21.19 → −17.97 | −6.98 |
+    | male /tʃ/ | 3.00 → 4.89 | 444 → 580 | 22.9 → 30.0 | −14.42 → −12.61 | −10.86 |
+    | female /tʃ/ | 3.27 → 5.17 | 352 → 447 | 22.6 → 28.6 | −21.77 → −18.83 | −8.76 |
+    | male /s/ | 4.65 → 6.35 | 264 → 313 | 28.6 → 33.9 | −11.21 → −9.86 | −8.96 |
+    | female /s/ | 4.77 → 6.47 | 209 → 245 | 27.9 → 32.7 | −17.89 → −15.98 | −10.88 |
+    | male /f/ | 2.13 → 3.99 | 318 → 420 | 18.9 → 25.1 | −18.51 → −16.40 | −23.64 |
+    | female /f/ | 2.42 → 4.23 | 275 → 351 | 20.8 → 26.6 | −27.13 → −24.55 | −24.05 |
+    | male /h/ | 2.02 → 4.93 | 671 → 1054 | 19.4 → 30.6 | −20.49 → −17.05 | −17.36 |
+    | female /h/ | 2.02 → 4.97 | 544 → 855 | 19.5 → 30.6 | −27.60 → −23.84 | −16.13 |
+
+  - **How much of the gap that is.** About 3 dB on /ʃ/ in both voices: most of his 5.5 and little of her 14.2. All of his /h/, a third of hers. Her extra gap stays, as it must: both voices were short of ΔP alike. Her /ʃ/ is still 11 dB low.
+  - **The vowels barely move.** Paired, absolute: +0.53 dB male, +0.36 female at R_dc = 3, +0.55 male at 2, for a tracheal pressure about 1 cmH₂O higher in a vowel (my arithmetic at 0.2 L/s, not probed). Closures and bursts stay, so they lose that much against the vowels.
+  - **Its side effects have causes:**
+    - Faster jets raise the teeth source's corner, so male /ʃ/'s centroid overshoots further (11.76 → 11.89 in log₂ Hz, men 11.61), while hers improves (11.76 → 11.86, women 11.98). St = 1.15 was taken at jets too slow. Experiment 21's rough reading of the real corners at the new v/D gives 0.8–0.95, but 0.9 costs the /s z dʒ/ centroids too much (1.074). 1.05 is about where M centroid /ʃ/ passes and F centroid /dʒ/ holds, a narrow window again.
+    - /f/ rises too, and the male /f/ was already 5 dB loud. Its source's amplitude at /f/ goes 52.8 → 83.2, so ×0.635 (×0.7 at R_dc = 3) re-levels the constriction gain at that one operating point. That is a level match, not a value from anywhere.
+    - /θ/ gets the teeth source's lift, and it shouldn't have one (lead 27).
+- Forms, speakers' training score from 1.045 (R = R_dc in cmH₂O/(L/s), St = Strouhal, exit = fades from the channel's exit under that factor of the minimum, NF = near fade from the narrowest section, GC = constriction gain, Lip = `lip_open_rate`; breaks only; **no form is BETTER**):
+
+  | form | score | breaks |
+  |---|---|---|
+  | law alone | 1.068 | F duration h, F level h, M burst d, M duration b, M level h, M level p, M level ʃ |
+  | R 2 | **0.967** | F level g, F level θ, M centroid ʃ +1.53, M level f, k, p, θ |
+  | R 2, law | 0.976 | F level g, θ; M centroid ʃ, duration v, level f, p, θ |
+  | R 2, St 0.9, exit 2 | 1.074 | F centroid dʒ, duration tʃ, level g; M centroid z, duration dʒ, θ, level f, p |
+  | R 2, St 1.05, exit 2, GC .635 | 0.998 | F duration tʃ, level g; M centroid ʃ, duration θ, level p |
+  | R 3, St 1.05, exit 1.5, GC .7 | 1.009 | F level g, M duration θ, M level p |
+  | R 2, corner 40, St 1.0, exit 2, GC .635 | 1.020 | F centroid dʒ, duration tʃ, level g; M duration θ, level p |
+  | the same, corner 80, glottis ×0.9 | 1.024 | the same five, level p unmoved |
+  | R 2, St 1.03, NF 1–1.5, GC .635, Lip 5 | 0.998 | F centroid dʒ, level g; M centroid ʃ, duration dʒ |
+  | **R 3, St 1.05, NF 1–1.5, GC .7, Lip 5** | **1.013** | **M duration dʒ +0.90 only** |
+  | the same, Lip 10 | 1.015 | F centroid dʒ, duration tʃ, level g; M duration dʒ |
+  | the same, Lip 15 | 1.017 | the same four |
+  | the same, NF 0.9–1.5 | 1.013 | F level g, M duration dʒ |
+  | the same, NF 1–1.25 | 1.007 | F level g; M centroid ʃ, duration dʒ |
+  | the same, NF 0.6–1 | 0.993 | F duration tʃ, level g; M centroid ʃ, duration θ |
+
+  **Read this table before trusting any row.** That is five knobs, and most breaks sit within 0.1 of the limit (F level g reads about +0.5 to +0.62 on every form with the lung fix), so which row breaks what is close to a coin. I stopped at 15 rather than hunt for a pass: a pass found that way would say little.
+  - **M level p isn't aspiration.** It holds −17.9 with the glottis at ×0.9. The tokens are bimodal, closure-dominated at −35 and release-dominated at −15, and the median sits at the upper mode's lower edge, so the judge reads −20.11 → −18 where the paired median moves +0.26 dB.
+  - **M duration dʒ is MFA's floor.** 63 tokens; four of them go from 60–80 ms to 30 ms, the aligner's minimum. It's a /dʒ/ with no frication (lead 5). Pooled 0.642 → 0.586 of a phone, and the judge reads 0.69 → 0.55.
+- Speakers, on the form one break away: 1.045 → 1.013 (training, **WORSE**, one break), 1.169 → 1.101 (held-out, read after deciding). Female 1.580 → 1.527, male 0.510 → 0.499. Groups: female level 1.38 → 1.22, sibilants 2.83 → 2.86, timing 0.52 → 0.50; male level 0.45 → 0.31, sibilants 0.72 → 0.78, timing 0.36 → 0.41. Diagnostics within 0.04.
+  - Down, female: level /ʃ/ 7.60 → 6.20, /tʃ/ 7.68 → 6.29, /h/ 3.79 → 2.46, /s/ 1.04 → 0.64, /z/ 0.47 → 0.15, duration /h/ 0.85 → 0.31. Male: level /ʃ/ 2.33 → 1.01, /tʃ/ 1.38 → 0.37, /θ/ 0.69 → 0, /h/ 0.30 → 0, burst /p/ 2.25 → 1.57, /b/ 0.87 → 0.29.
+  - Up: female burst /d/ 1.76 → 2.09, centroid /dʒ/ 3.37 → 3.87; male centroid /ʃ/ 0.72 → 1.22 (at its limit), duration /tʃ/ 0.43 → 0.74, /v/ 0.10 → 0.52, /dʒ/ 2.85 → 3.75.
+  - R 2 alone, for comparison: 0.967, held-out 1.082. Female level 1.20, sibilants 2.36, timing 0.48; male level 0.45, sibilants 0.94, timing 0.38. St is what costs the sibilants in the row above.
+  - The first run's summary line showed a held-out score (1.242, the law alone). I filtered it after that.
+- Whisper, on the same form: **30.46 → 26.16 %** (training; baseline 36.75, BETTER, and past the ±2 of noise), 36.33 → 36.33 % (held-out; baseline 44.33). Harvard male 26.25 → 22.5, female 26.25 → 22.5; nonsense male 29.58 → 26.76, female 40.85 → 33.8.
+  - **"Sheet" and "chain", as experiment 13 saw.** Female "Glue the feet of the" → "Glue the shit from the": still 2 errors, but /ʃ/ is heard. Female "the black drain" → "the black chain". The female "green chair" is "green children's" both times (4 → 2 errors), and the male's goes from "Green Shattering" to "Green Children's" (3 → 2).
+  - Others: male "Rice is often served in round bowls" 5 → 0, female "The thin road" 4 → 2. Worse: male "The birch canoe" 4 → 7, female "chopped" 0 → 2 ("fetch-lapped").
+- Singer, on the same form: 0.572 → 0.566 (training; baseline 0.587, BETTER), 0.819 → 0.813 (held-out; baseline 0.811). Guards hold: 0 notes off time, 0 dropped gestures, note MCD 8.545 → 8.524 dB (guard 8.714), envelope correlation 0.822, pitch error 4.79 cents. Louder noise didn't cost note MCD here.
+- Tests: **three fail with any R_dc tried, whatever else is set** (cargo in release, on seven of the speech test files, under the switches): none is a judge, and each has a cause to fix first.
+  - `affricates.rs`: the male /tʃ/ frame now reads within 8 dB of the vowel, so the test's "voice" is found at the frication, and its gap underflows. No gap should pass: the test wants a saturating subtraction, which doesn't weaken it.
+  - `an_f_does_not_click`: male /ɑvɑ/ onset +6.2 dB against its limit of 6.0.
+  - `a_stop_after_a_vowel_sounds_closed…`: male tip median 12.9 ms (limit 7), 10.2 with the near fade. My guess, not checked: the closing phase's noise is lifted too, so it sounds closed later, and experiment 26's aim moves with it.
+  - Bench and the full suite: not run. One low-pass and a scalar per sample. Nobody has listened to it.
+- Verdict: reverted. The speakers' verdict is WORSE on every form, and three tests fail. It took about an hour; the idea is larger than one experiment.
+- Commit: none (log only).
+- Next: the lung fix is the most promising thing in this batch for understanding, and it wants preparing, in this order, each its own run:
+  1. **Lead 5's /dʒ/ folds first**: experiment 22 measured −0.09, level /dʒ/ blocked it, and it should take away both /dʒ/ breaks here.
+  2. **Then the lung fix's own trips**: re-aim the tip's closure (the 12.9 ms) with the fix in place, with the /ɑvɑ/ onset and the /tʃ/ test's underflow. Run R_dc = 2–3 with St and the constriction's level re-read at the new jets, in one experiment, since neither stands alone.
+  3. **Lead 27's /θ/** goes with it: alone it barely moves the score.
+  - **Find real numbers first.** Lower-airway resistance in speech, oral pressure and flow at /ʃ s h/ (Scully; Klatt et al. 1968; Stathopoulos). The R_dc I'd defend is 2–3 from a weak table; the rest of the case is the probe's arithmetic.
+  - **Don't retry** v³·√A on the sources. If the ΔP-corrected judge is run again, /s/ against /ʃ/ is what to watch.
+  - Her remaining 11 dB is not in the noise: half her extra gap is her vowels (lead 23), and it shouldn't be chased with a gain.
