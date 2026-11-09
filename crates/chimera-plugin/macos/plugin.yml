@@ -64,3 +64,13 @@ jobs:
 
       - name: Validate
         run: crates/chimera-plugin/macos/validate.sh
+
+      # what the host test rendered and saw, to listen to and look at
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chimera-host-test
+          path: |
+            target/host-test/*.wav
+            target/host-test/*.jpg
+          if-no-files-found: ignore

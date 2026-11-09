@@ -57,3 +57,4 @@ and the CLI) under a React UI. See the README.
 | `src/ui/`, `src/show/`, CSS | `bun run lint:layout` |
 | `crates/chimera-plugin/`, `src/audio/`, `src/ui/store.ts`, `src/ui/singing.ts`, `src/ui/speech.ts`, `src/ui/pluginState.ts` | `bun run build`, `cargo build -p chimera-plugin --release --example ui_harness`, then `bun tools/plugin-e2e.ts` |
 | the plugin's page or CSS | the harness (above), then `bun tools/layout-lint.ts --plugin --url http://127.0.0.1:8549/` |
+| the plugin, on a branch that builds on CI | read the REAPER group in the run's log, screenshots included (`docs/plugin.md`, "Testing in a host") |

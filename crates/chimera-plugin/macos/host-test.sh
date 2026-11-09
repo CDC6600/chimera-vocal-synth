@@ -155,7 +155,8 @@ run_reaper() { # formats, and a project to reopen instead of starting afresh
       step=${marker##*/at-}
       rm "$marker"
       case "$step" in
-        ready) wait_for_nag ;;
+        # a second launch has neither the first-run questions nor, it turns out, the nag
+        ready) if [ -z "${2:-}" ]; then wait_for_nag; fi ;;
         editor-*) editor "${step#editor-}" ;;
         shot-*) shot "${step#shot-}" ;;
         reopened-*)

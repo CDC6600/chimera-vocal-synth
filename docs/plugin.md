@@ -187,16 +187,23 @@ still use it.
 ## Window size
 
 The window opens at the size the project saved (`#[persist = "window"]`, 1280 x 800 at first) and can
-be anything from 720 x 500 to 3840 x 2160.
+be anything from 720 x 500 to 3840 x 2160, but never larger than the screen has room for, host's window
+included: a window hanging off the screen would have its grip there too, with no way back. The saved
+size is left alone, so a project opened on a larger screen gets its size back.
 
 - **Larger than the layout needs:** the screens take the room, as on the website.
 - **Smaller than `LAYOUT_MIN` (1120 x 800):** the page is zoomed out (`WKWebView.pageZoom`) until it
   fits, so the layout stays the same, smaller. The website's own answer to a narrow window is a stacked
   page that scrolls, and in a plugin what's below the fold might as well not be there. The layout lint's
   `--plugin` mode fails if the page scrolls at `LAYOUT_MIN`.
+- **The page has no scrollbar.** With a mouse, macOS shows classic scrollbars, which would sit beside the
+  grip. The wheel still scrolls: on a display that isn't Retina, text shrinks less than the rest of the
+  page, so around a 0.7 zoom Beatbox's keys run off the bottom.
 
-nih-plug answers `can_resize` with false, so a host can't drag the border. Patching that means forking
-nih-plug, so the window has its own grip in the corner, as many plugins do. While dragging, the page
+nih-plug answers `can_resize` with false, so a host isn't meant to drag the border. Patching that means
+forking nih-plug, so the window has its own grip in the corner, as many plugins do. It sits 6 px in,
+because macOS keeps the corner of a resizable window for resizing that window: in REAPER a drag from 12
+points in shortens the window and clips the page, and one from 16 points in reaches the grip. While dragging, the page
 tells Rust the pointer moved, at most once a frame, and Rust reads where to (`NSEvent.mouseLocation`):
 the page's own coordinates change with its zoom, which changes during the drag. Double-clicking the grip
 goes back to the first size.
@@ -207,8 +214,16 @@ goes back to the first size.
   host view's real size as the window's: a host may have refused or clamped it, and a CLAP host may
   resize a little after it's asked.
 - **A host may refuse.** clap-wrapper's `onSize` reports failure while `can_resize` is false, and a host
-  that honours that keeps its old size. Only a test in each host can tell; if FL Studio does, the way
-  out is `can_resize` in a nih-plug fork, which would also give dragging the border.
+  that honours that keeps its old size. REAPER doesn't, in any of the three formats. FL Studio is the
+  one left to try; if it does, the way out is `can_resize` in a nih-plug fork, which would also give
+  dragging the border.
+- **An AU's view has no window at first.** clap-wrapper's AU calls `gui.set_parent` from
+  `uiViewForAudioUnit`, before the host has put the view in a window, and wry panics without one
+  (`ns_view.window().unwrap()`), which took the whole host down. So a run loop timer looks for the window
+  and the webview is built then. Building in a temporary window and moving across doesn't work: the
+  webview never draws in the window it's moved to. A view of ours watching for its window would need a
+  class of ours, and bundles of one binary in one process can't all register the same class name. A
+  panic from wry is also caught, so the worst case is an empty window.
 - **The webview follows the host's view** through its autoresizing mask (wry fixes a child's size, so
   the editor changes the mask after building it). Nothing calls `set_bounds`: a host that resizes
   after the call returns would grow the webview twice. The zoom follows the view's real size too, read
@@ -355,9 +370,36 @@ making no other network use) and a signed installer: see Later.
 - `examples/ui_harness.rs` serves the same `/poll`, `/state` and IPC over HTTP from a real `Core` on
   a timer. A Playwright script drives the UI against it in headless Chromium, and the layout lint
   checks the plugin's window sizes.
-- CI on macOS builds all three bundles and runs the validators. Only the owner's FL Studio tests the
-  webview itself, so a build reaches it as early as the full bundle can load: whether module scripts
-  and wasm work over the custom scheme in WKWebView is the largest unknown left.
+- CI on macOS builds all three bundles, runs the validators, and runs the test below.
+
+## Testing in a host
+
+GitHub's Macs have a display, and their image lets scripts capture it and post clicks, so CI runs the real
+plugin in a real host: REAPER, driven by `macos/host-test.sh`, with `host-test/host_test.lua` inside it
+and `host-test/check.ts` judging what comes out. It takes about seven minutes of a CI run, and fails it.
+
+- **Each format, as a user would:** it loads, each mode renders, notes come out in tune, Beatbox's kicks and
+  pads land on the grid after the host's delay compensation, a hum sits two octaves down, and the formats
+  sound alike. Then the editor opens, notes play through the sound device, a real click picks Beatbox, a
+  real drag on the grip resizes the window, and a bounce follows. Then REAPER quits and comes back, and the
+  saved project returns in its mode and at its size, and bounces the same.
+- **Every format has to get through every case:** a run that did nothing mustn't pass. REAPER can't set an
+  AU's state from a script, so AU covers Sing and what's reachable by clicking, not Speak, pads or the hum.
+- **AU runs alone.** All three bundles hold one binary, so in one process their Objective-C classes share
+  names, and a host's lookup of the AU's view fails. REAPER then quietly shows its generic sliders, which
+  is what hid the crash above until AU ran by itself.
+- **Formats are compared by loudness over time, not by samples.** With the sound device open, the voice runs
+  on through silence, so it meets the first note in a different state each time.
+- **Rendering at the device's rate.** REAPER prepares plugins at the sound device's 48 kHz, so a bounce at
+  another rate changes Beatbox's latency in samples, and a VST3 is then restarted partway through. It cost
+  one kick its tail. Likely only that bounce at another rate is affected, and it isn't fixed.
+- **Screenshots go to the log** as base64 between `=== screenshot` lines, because the workflow uploads its
+  artifacts before this runs. Read them: a check can't tell a good-looking page from a bad one.
+- **To develop it**, REAPER for Linux runs the same Lua under `xvfb-run`, with no editor, against
+  `target/release/libchimera_plugin.so` copied to `~/.clap/CHIMERA.clap`.
+
+It doesn't cover: looping playback in a host (the beat player's own tests do), what it sounds like,
+dropouts on real hardware, or other hosts. FL Studio in particular still needs one look.
 
 ## Licences
 
