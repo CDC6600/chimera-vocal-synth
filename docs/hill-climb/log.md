@@ -2729,9 +2729,9 @@ structural fix the owner asked for. Nine kept (21, 22, 23, 25, 26, 27, 29, 31, 3
 
 | | baseline (e939cf7) | now | a real speaker |
 |---|---|---|---|
-| Speakers, training | 1.646 | 0.806 | 0.277 |
-| Speakers, held-out | 1.710 | 0.859 | 0.243 |
-| Female / male | 2.364 / 0.928 | 1.136 / 0.475 | |
+| Speakers, training | 1.646 | 0.795 | 0.277 |
+| Speakers, held-out | 1.710 | 0.862 | 0.243 |
+| Female / male | 2.364 / 0.928 | 1.114 / 0.476 | |
 | Whisper, training | 36.75 % | 27.15 % | 2.7 % over all recordings |
 | Whisper, held-out | 44.33 % | 38.33 % | |
 | Singer, training | 0.587 | 0.443 | |
@@ -2766,3 +2766,38 @@ Open, largest first:
 - **`an_f_does_not_click` rejects real voices.** On its own statistic the training speakers' /v/ reads
   +16.6 dB (women) and +18.5 dB (men), where its limit is 6, and it blocks fixing a /v/ whose constriction
   lands late (lead 38). It wasn't changed; the owner's call.
+
+### Batch review (Codex), and what changed after it
+
+No high-severity defect. It read the lung feedback, the jet and filter calculations, the glottis
+changes, the body interpolation, the wasm catalogue, the controls and the singing and live callers,
+and found no render allocation, no math outside the wrapper and no unstable coefficient for the
+supported bodies. Creature goldens are unchanged, and `consonant_artifacts.rs` is unedited through the
+batch. It didn't rerun the dataset judges or read the physiology literature. Four findings, all fixed,
+each with a test that fails on the old code:
+
+- **A squeezed affricate's breath spilled into the vowel.** A 0.125-beat vowel before /tʃɑ/ at 120 bpm
+  leaves /tʃ/ 12.5 ms; its folds closed 19.4 ms into the vowel, and its release started before its span.
+  The closing now fits the span (`affricate_folds`), and the release starts with it.
+  `sing_fast::a_squeezed_affricate_keeps_its_folds_and_its_release_inside_its_span`.
+- **/ð/ after an explicit pause stayed a fricative.** The `_` of IPA's `|` wasn't read as a pause.
+  `stop_spans::dh_after_an_explicit_pause_is_a_closure_too`. The text path has no `_`.
+- **A word's last /ɹ/ before a vowel in the next word missed experiment 25's shared nucleus.** "car is"
+  gave /ɑɹ/ about 203 ms, "car big" 130. `nasal_spans`. This one changes speech: speakers 0.806 →
+  0.795 (BETTER, no break), held-out 0.859 → 0.862; Whisper and the singer unchanged, bench 18.5 %.
+- **The affricate test couldn't see an [h] after a loud frication.** It took level alone as the voice's
+  arrival, so a frication as loud as the vowel read as no gap (0 ms on a made-up 120 ms [h]). It now
+  needs energy below 1 kHz too, and `the_gap_measure_sees_an_h_after_a_loud_frication` tests it.
+
+The review adds that `an_f_does_not_click` passing at +5.98 against 6 is fragile evidence, and found no
+evidence that the values picked because they pass are physically wrong. No second round: the fixes are
+small and each has its reproduction.
+
+### Seen while building the listening page
+
+"The boy was there when the sun rose.", a held-out sentence, went from 0 errors to 4 and 5: the male
+"was Der", the female "is the land". It fits experiment 26's rule, which makes /ð/ after a fricative a
+closure where the speakers' show a burst's rise only 42 and 59 % of the time (experiment 24's table; its
+form E, leaving that context as after a vowel, read about the same on the speakers' judge). Held-out, so
+no change was made for it. It is on the owner's page. The next batch may look at this context: this
+sentence is no longer a clean held-out check of it.

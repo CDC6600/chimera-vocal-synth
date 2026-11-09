@@ -288,7 +288,7 @@ female 2.36, male 0.93.
 | before batch 1 (5186d64) | 2.001 | 2.143 | 2.92 | 1.08 |
 | after batch 1 (4980e3b) | 1.853 | 1.977 | 2.78 | 0.93 |
 | after batch 2 (e939cf7) | 1.646 | 1.710 | 2.36 | 0.93 |
-| after batch 3 | 0.806 | 0.859 | 1.14 | 0.48 |
+| after batch 3 | 0.795 | 0.862 | 1.11 | 0.48 |
 
 - **Batch 1** mostly helped timing (female 1.33 → 0.94, male 0.82 → 0.68).
 - **Batch 2** moved the female /ʃ/ centroid from 2.8 to 3.3 kHz (women 4.0). It overshot the
