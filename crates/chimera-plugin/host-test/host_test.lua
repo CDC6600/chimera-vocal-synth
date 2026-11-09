@@ -285,8 +285,15 @@ local function reopen(project)
     reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", 0)
     local good, err = pcall(render, format .. "-reopened-bounce", 8.5)
     record({ format = format, case = "reopened-bounce", fx_name = format, pdc = pdc(tr, 0), error = good and "" or tostring(err) })
+    ask("shot-after-bounce-" .. format)
     -- A reopened page that never built would pass all of the above, which only ask the plugin. Clicked
     -- away from Beatbox, the pattern stops and a bounce is silent, which needs no reading of its state.
+    -- Closed and opened first: a bounce uninitializes an AU, and clap-wrapper closes its editor then,
+    -- leaving the window empty until it's opened again (docs/plugin.md, "Window size").
+    reaper.TrackFX_Show(tr, 0, 2)
+    sleep(1)
+    reaper.TrackFX_Show(tr, 0, 3)
+    sleep(4)
     ask("click-play-" .. format)
     sleep(1.5)
     state = state_of(tr, 0, format)

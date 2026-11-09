@@ -224,6 +224,11 @@ goes back to the first size.
   webview never draws in the window it's moved to. A view of ours watching for its window would need a
   class of ours, and bundles of one binary in one process can't all register the same class name. A
   panic from wry is also caught, so the worst case is an empty window.
+- **An AU's editor goes when the host uninitializes it (known limit).** clap-wrapper's `Cleanup` closes the
+  editor and leaves its empty view in the host's window, and nothing brings it back until the window is
+  closed and opened again. REAPER does this for a bounce, and when its sound device starts after the
+  editor has opened. The sound carries on. The fixes are a patched clap-wrapper, or a page that outlives
+  `gui.destroy` until its view leaves the window, which then has to take care not to call a host that's gone.
 - **The webview follows the host's view** through its autoresizing mask (wry fixes a child's size, so
   the editor changes the mask after building it). Nothing calls `set_bounds`: a host that resizes
   after the call returns would grow the webview twice. The zoom follows the view's real size too, read
@@ -382,8 +387,8 @@ and `host-test/check.ts` judging what comes out. It takes about seven minutes of
   pads land on the grid after the host's delay compensation, a hum sits two octaves down, and the formats
   are about as loud as each other over time. Then the editor opens, notes play through the sound device, a
   real click picks Beatbox, a real drag on the grip resizes the window, and a bounce follows. Then REAPER
-  quits and comes back: the saved project returns in its mode and at its size, bounces the same, and its
-  page answers a click.
+  quits and comes back: the saved project returns in its mode and at its size and bounces the same, and
+  once its window is closed and opened again, a click stops the pattern.
 - **Every format has to get through every case:** a run that did nothing mustn't pass. REAPER can't set an
   AU's state from a script, so AU covers Sing and what's reachable by clicking, not Speak, pads or the hum.
 - **AU runs alone.** All three bundles hold one binary, so in one process their Objective-C classes share
