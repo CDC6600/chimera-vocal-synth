@@ -51,9 +51,23 @@ fn frication(fr: &[(f64, f64)], t0: f64, t1: f64, name: &str) -> (usize, usize) 
     let vowel = fr[at(t1 + 0.1)..at(t1 + 0.14)].iter().map(|f| f.0).fold(f64::MIN, f64::max);
     let fric: Vec<usize> = (at(t0)..at(t1 + 0.1)).filter(|&i| fr[i].1 < -10.0 && fr[i].0 > vowel - 30.0).collect();
     let (first, last) = (*fric.first().unwrap_or_else(|| panic!("{name}: no frication")), *fric.last().unwrap());
-    let voiced = (last..fr.len()).find(|&i| fr[i].0 > vowel - 8.0).unwrap();
-    // the frication's last frame can itself be within 8 dB of the vowel: no gap at all
-    ((last - first + 1) * 10, (voiced - last).saturating_sub(1) * 10)
+    // the voice: as loud as the vowel, and with its energy below 1 kHz. Level alone would take a
+    // loud frication for the vowel, and report no gap whatever follows it.
+    let voiced = (last + 1..fr.len()).find(|&i| fr[i].0 > vowel - 8.0 && fr[i].1 >= -10.0).unwrap();
+    ((last - first + 1) * 10, (voiced - last - 1) * 10)
+}
+
+/// The detector itself: a frication as loud as the vowel, then a quiet [h], then the vowel.
+#[test]
+fn the_gap_measure_sees_an_h_after_a_loud_frication() {
+    let at = |t: f64| (t * FS / FRAME as f64) as usize;
+    let (t0, t1) = (0.1, 0.2);
+    let mut fr = vec![(-60.0, 0.0); at(0.6)];
+    fr[at(t0)..at(t1)].fill((-16.0, -20.0)); // frication, with little below 1 kHz
+    fr[at(t1)..at(t1 + 0.12)].fill((-35.0, -3.0)); // 120 ms of a quiet [h]
+    fr[at(t1 + 0.12)..].fill((-15.0, -1.0)); // the vowel
+    let (length, gap) = frication(&fr, t0, t1, "made up");
+    assert_eq!((length, gap), (100, 120), "frication {length} ms, then {gap} ms to the voice");
 }
 
 const VOICES: [(HumanBody, &str, f64); 2] = [(BODY_MALE, "male", 112.0), (BODY_FEMALE, "female", 205.0)];

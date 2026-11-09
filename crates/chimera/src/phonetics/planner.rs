@@ -222,8 +222,9 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
         }
     }
     for i in 0..segs.len() {
-        let after_obstruent = i == 0 || segs[i - 1].def.is_some_and(|d| matches!(d.manner, Manner::Stop | Manner::Affricate | Manner::Fricative));
-        if segs[i].ipa == "ð" && after_obstruent {
+        // (a pause: the utterance's start, or an explicit one, the `_` of IPA's `|` or a comma)
+        let after_pause_or_obstruent = i == 0 || segs[i - 1].ipa == "_" || segs[i - 1].def.is_some_and(|d| matches!(d.manner, Manner::Stop | Manner::Affricate | Manner::Fricative));
+        if segs[i].ipa == "ð" && after_pause_or_obstruent {
             // /ð/ after a pause, a stop, an affricate or a fricative is a silent dental closure and a
             // weak burst (Zhao 2010; the TSP speakers, hill-climb log, experiment 24). Its span stays Klatt's.
             let d = segs[i].def.as_mut().unwrap();
@@ -309,9 +310,10 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
                 add_oral(&def.targets, t0, split, 2.0, def.ipa);
                 // the release is the fricative's own gesture, not a contact release's: it takes
                 // the fricative's articulators (the jaw too) and holds to the span's end, where
-                // the folds have closed (below). Its 8 ms lead hands over from the closure.
+                // the folds have closed (below). Its 8 ms lead hands over from the closure. A span
+                // squeezed under 33 ms (a fast sung note) starts it with the span, not before.
                 if let Some(rel) = def.release.and_then(|r| phoneme(r, body)) {
-                    oral_gestures_into(&rel, &rel.targets, split - 0.015, t1, 1.4, def.ipa, &mut gestures);
+                    oral_gestures_into(&rel, &rel.targets, js_max(t0, split - 0.015), t1, 1.4, def.ipa, &mut gestures);
                 }
             }
             Manner::Fricative | Manner::Approximant | Manner::Lateral => add_oral(&def.targets, t0, t1, 1.3, def.ipa),
@@ -452,9 +454,12 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
 /// /tʃ/: about 55 ms of closure, 60-65 ms of frication and a fading tail; their /dʒ/: 45-55, about 45).
 const AFFRICATE_CLOSURE: f64 = 0.45;
 
-/// An affricate's folds: apart by `open` for the frication, and together again by `t1`, as it ends.
+/// An affricate's folds: apart by `open` for the frication, and together again by `t1`, as it ends. A
+/// span too short for the 30 ms closing (a fast sung note) closes faster, so the breath doesn't spill
+/// into the vowel.
 fn affricate_folds(open: f64, t1: f64) -> Gesture {
-    Gesture::new(open, js_max(open, t1 - 0.03), 0.035, 0.03, 6.0, one(ControlKey::ABDUCTION, 0.36))
+    let (hold, closing) = if t1 - open > 0.03 { (t1 - 0.03, 0.03) } else { (open, t1 - open) };
+    Gesture::new(open, hold, 0.035, closing, 6.0, one(ControlKey::ABDUCTION, 0.36))
 }
 
 /// How much later a nasal's closure is aimed than its span's start (s). `oral_gestures_into` brings

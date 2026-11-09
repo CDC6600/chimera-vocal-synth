@@ -8,7 +8,7 @@ use chimera::phonetics::{Plan, PlannedSegment};
 
 fn g2p() -> EnglishG2P {
     let mut g = EnglishG2P::new();
-    g.load_dict("bah\tB AA1\nbee\tB IY1\nbop\tB AA1 P\ndee\tD IY1\ndoo\tD UW1\nscoo\tS K UW1\nskee\tS K IY1\nstrut\tS T R AH1 T\n");
+    g.load_dict("ah\tAA1\nbah\tB AA1\nbee\tB IY1\nbop\tB AA1 P\ncha\tCH AA1\ndee\tD IY1\ndoo\tD UW1\nja\tJH AA1\nscoo\tS K UW1\nskee\tS K IY1\nstrut\tS T R AH1 T\n");
     g
 }
 
@@ -91,6 +91,39 @@ fn a_delayed_cluster_closure_stays_inside_a_short_sung_stop() {
         for gst in plan.gestures.iter().filter(|g| g.label.as_ref().is_some_and(|l| l.as_str() == "t") && g.t0 >= t.t0 - 0.05 && g.t0 <= t.t1) {
             assert!(gst.t0 <= gst.t1, "a /t/ gesture runs backwards: {:.4} → {:.4}", gst.t0, gst.t1);
             assert!(gst.t1 <= t.t1 + 1e-9, "a /t/ gesture ends at {:.4} s, after its /t/ ({:.4}–{:.4} s)", gst.t1, t.t0, t.t1);
+        }
+    }
+}
+
+/// A fast sung note squeezes an affricate to a few ms (12.5 ms for a 0.125-beat vowel before /tʃɑ/ at
+/// 120 bpm). Its folds still close inside its span, or the breath spills into the vowel (it ran 19 ms
+/// into it), and its release doesn't start ahead of the span.
+#[test]
+fn a_squeezed_affricate_keeps_its_folds_and_its_release_inside_its_span() {
+    for lyrics in ["ah cha ah cha", "ah ja ah ja"] {
+        for (bpm, beats) in [(120.0, 0.125), (184.0, 0.25), (240.0, 0.25), (120.0, 0.25), (90.0, 0.5)] {
+            let (_, _, plan) = sing(lyrics, beats, bpm);
+            let spans: Vec<&PlannedSegment> = plan.segments.iter().filter(|s| s.ipa == "tʃ" || s.ipa == "dʒ").collect();
+            assert!(!spans.is_empty(), "{lyrics:?}");
+            for span in spans {
+                let folds: Vec<_> = plan
+                    .gestures
+                    .iter()
+                    .filter(|g| g.t0 >= span.t0 - 1e-9 && g.t0 < span.t1 && g.label.as_ref().is_some_and(|l| matches!(l.as_str(), "aspiration" | "voiced affricate")))
+                    .collect();
+                assert!(!folds.is_empty(), "{lyrics:?} at {bpm} bpm: no folds in a {:.1} ms span", (span.t1 - span.t0) * 1000.0);
+                for g in folds {
+                    let end = g.t1 + g.ramp_out;
+                    assert!(end <= span.t1 + 1e-9, "{lyrics:?}, {beats} beats at {bpm} bpm: the folds close {:.1} ms into the vowel", (end - span.t1) * 1000.0);
+                }
+                // the release is the fricative's own gesture (its speed picks it out from the
+                // closure's), with its 8 ms lead
+                let releases: Vec<_> = plan.gestures.iter().filter(|g| g.label.as_ref().is_some_and(|l| l.as_str() == span.ipa) && g.speed == Some(1.4)).filter(|g| (g.t1 - span.t1).abs() < 0.03).collect();
+                assert!(!releases.is_empty(), "{lyrics:?} at {bpm} bpm: no release");
+                for g in releases {
+                    assert!(g.t0 >= span.t0 - 0.008 - 1e-9, "{lyrics:?}, {beats} beats at {bpm} bpm: the release starts {:.1} ms before the span", (span.t0 - g.t0) * 1000.0);
+                }
+            }
         }
     }
 }

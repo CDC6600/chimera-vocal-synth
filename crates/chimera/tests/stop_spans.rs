@@ -146,3 +146,15 @@ fn a_lip_release_starts_slowly() {
     let b = release_burst(&render("ˈɑpɑ", "male"));
     assert!(b < -5.0, "/p/ release {b:.1} dB re the vowel");
 }
+
+/// /ð/ is a closure after any pause, not only the utterance's start: the `_` of IPA's `|` is a pause.
+#[test]
+fn dh_after_an_explicit_pause_is_a_closure_too() {
+    let kind = |ipa: &str| {
+        let plan = plan_utterance(&tokenize_ipa(ipa), &PlanOptions { body: "male".into(), t0: 0.05, f0: Some(112.0), ..Default::default() });
+        plan.segments.iter().find(|s| s.ipa == "ð").unwrap().kind.clone()
+    };
+    assert_eq!(kind("ðə"), "stop", "at the utterance's start");
+    assert_eq!(kind("ɑ | ðə"), "stop", "after an explicit pause");
+    assert_eq!(kind("ɑðə"), "fricative", "between vowels");
+}

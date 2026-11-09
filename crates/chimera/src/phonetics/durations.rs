@@ -199,7 +199,8 @@ pub fn klatt_durations(segs: &[Segment], info: impl Fn(&Segment) -> SegInfo) -> 
     // Klatt transcribes a vowel and its /ɹ/ as one nucleus (/AR/ "bar", /OR/ "boar"...), where the
     // G2P gives two segments: without this the pair gets the vowel's whole span and the /ɹ/'s on top
     for i in 0..n.saturating_sub(1) {
-        let coda = i + 2 >= n || !inf[i + 2].vowel;
+        // (a vowel in the next word doesn't make it an onset: "car is" has "car"'s nucleus)
+        let coda = i + 2 >= n || word[i + 2] != word[i + 1] || !inf[i + 2].vowel;
         if inf[i].vowel && segs[i + 1].ipa == "ɹ" && word[i + 1] == word[i] && coda && segs[i].dur.is_none() && segs[i + 1].dur.is_none() {
             durs[i] = (durs[i] - durs[i + 1]).max(NUCLEUS_VOWEL_MIN);
         }
