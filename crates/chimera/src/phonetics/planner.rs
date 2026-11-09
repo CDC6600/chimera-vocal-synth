@@ -341,8 +341,7 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
                 // apart from the closure on, and together again as the frication ends: in an
                 // affricate the frication is the voice onset time, with no [h] after it, and the
                 // vowel keeps its planned length
-                let open = t0 + 0.15 * dur;
-                gestures.push(Gesture::new(open, js_max(open, t1 - 0.03), 0.035, 0.03, 6.0, one(ControlKey::ABDUCTION, 0.36)).label("aspiration"));
+                gestures.push(affricate_folds(t0 + 0.15 * dur, t1).label("aspiration"));
             } else if def.manner == Manner::Stop {
                 // aspirated when syllable-initial before a vowel and not after /s/ (English-like)
                 let aspirated = next_vowel && !prev_seg.is_some_and(|p| p.ipa == "s");
@@ -361,6 +360,11 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
             let after_nasal = prev_seg.and_then(|p| p.def.as_ref()).is_some_and(|d| d.manner == Manner::Nasal);
             let opening = if def.ipa == "ð" && after_nasal { DH_OPENING } else { VOICED_FRICATIVE_OPENING };
             gestures.push(Gesture::new(t0 - 0.015, t1, 0.03, 0.03, 3.0, one(ControlKey::ABDUCTION, opening)).label("voiced frication"));
+        } else if def.manner == Manner::Affricate {
+            // the speakers' /dʒ/ differs from their /tʃ/ at its ends, not its frication: voice carries into
+            // the closure and fades there, and the frication is as loud and as voiceless as /tʃ/'s
+            // (hill-climb log, experiment 29). So the same folds, parted only for the release.
+            gestures.push(affricate_folds(t0 + dur * AFFRICATE_CLOSURE, t1).label("voiced affricate"));
         }
     }
     let open_end = o.open_end == Some(true);
@@ -443,8 +447,13 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
 }
 
 /// The share of an affricate's span that is closure, the rest being frication (the TSP speakers'
-/// /tʃ/: about 55 ms of closure, 60-65 ms of frication and a fading tail).
+/// /tʃ/: about 55 ms of closure, 60-65 ms of frication and a fading tail; their /dʒ/: 45-55, about 45).
 const AFFRICATE_CLOSURE: f64 = 0.45;
+
+/// An affricate's folds: apart by `open` for the frication, and together again by `t1`, as it ends.
+fn affricate_folds(open: f64, t1: f64) -> Gesture {
+    Gesture::new(open, js_max(open, t1 - 0.03), 0.035, 0.03, 6.0, one(ControlKey::ABDUCTION, 0.36))
+}
 
 /// How much later a nasal's closure is aimed than its span's start (s). `oral_gestures_into` brings
 /// contact to about its `a` (a median 0-9 ms early in running speech), but a nasal is heard from when
