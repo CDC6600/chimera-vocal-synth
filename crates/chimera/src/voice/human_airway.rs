@@ -69,6 +69,11 @@ pub struct HumanAirway {
     pub seal_hi: f64,
     /// below this area (cm²) the closing rate slows with √A, so the seal is reached smoothly
     pub seal_ease: f64,
+    /// Lips part from a point, so their gap and width grow together and the area starts slowly
+    /// (cm²/s at contact, reaching maxAreaRate by twice sealLo). Opened at the full rate from the
+    /// first sample, the flow's slope stepped up, the release's counterpart of the seal's click: a
+    /// /p/ read 6-10 dB over the speakers' below 500 Hz, its first millisecond the loudest.
+    pub lip_open_rate: f64,
     /// areas committed at the start of the current control step (slew-limit baseline)
     base: Option<[Vec<f64>; 4]>,
     base_dt: f64,
@@ -158,6 +163,7 @@ impl HumanAirway {
             seal_lo: 0.03,
             seal_hi: 0.4,
             seal_ease: 0.03,
+            lip_open_rate: 15.0,
             base: None,
             base_dt: 0.0,
             noise_list: Vec::with_capacity(8),
@@ -227,11 +233,14 @@ impl HumanAirway {
                 };
                 seal_r + (open_r - seal_r) * u * u * (3.0 - 2.0 * u)
             };
-            let clamp_arr = |cur: &mut [f64], old: &[f64], mins: &mut [f64], old_mins: &[f64]| {
+            let lip_r = self.lip_open_rate * k2;
+            // opening rate of section i at area A: the sections ahead of the teeth are the lips'
+            let open_rate = |i: usize, lips_from: usize, area: f64| -> f64 { if i < lips_from { open_r } else { lip_r + (open_r - lip_r) * smooth(lo, 2.0 * lo, area) } };
+            let clamp_arr = |cur: &mut [f64], old: &[f64], mins: &mut [f64], old_mins: &[f64], lips_from: usize| {
                 for i in 0..cur.len() {
                     let d = cur[i] - old[i];
                     if d > 0.0 {
-                        let lim = (open_r + gain * cur[i]) * dt;
+                        let lim = (open_rate(i, lips_from, old[i]) + gain * cur[i]) * dt;
                         if d > lim {
                             cur[i] = old[i] + lim;
                         }
@@ -243,7 +252,7 @@ impl HumanAirway {
                     }
                     let dm = mins[i] - old_mins[i];
                     if dm > 0.0 {
-                        let lim_m = (open_r + gain * mins[i]) * dt;
+                        let lim_m = (open_rate(i, lips_from, old_mins[i]) + gain * mins[i]) * dt;
                         if dm > lim_m {
                             mins[i] = old_mins[i] + lim_m;
                         }
@@ -261,8 +270,9 @@ impl HumanAirway {
                     }
                 }
             };
-            clamp_arr(&mut self.ph_areas, &base[0], &mut self.ph_min, &base[2]);
-            clamp_arr(&mut self.or_areas, &base[1], &mut self.or_min, &base[3]);
+            clamp_arr(&mut self.ph_areas, &base[0], &mut self.ph_min, &base[2], usize::MAX);
+            let lips_from = (self.or_areas.len() as f64 * (1.0 - (f.lip_s - f.teeth_s) / or_len)) as usize;
+            clamp_arr(&mut self.or_areas, &base[1], &mut self.or_min, &base[3], lips_from);
         }
         self.ph_len = ph_len;
         self.or_len = or_len;

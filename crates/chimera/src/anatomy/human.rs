@@ -271,11 +271,15 @@ pub struct HumanBody {
     pub tongue_radius: f64,
     /// max lip width (cm, before scale)
     pub lip_width: f64,
+    /// length of the membranous vocal fold, the part that vibrates (1 = adult male). Two thirds of
+    /// his in a woman (1/1.6 in Titze 1989, 10 mm of 17 in Zhang 2021), which puts her peak flow at
+    /// 0.63 of his; 6 mm of 17 in a child of 8-10 (Zhang 2021, after Titze 1989).
+    pub fold_length: f64,
 }
 
-pub const BODY_MALE: HumanBody = HumanBody { name: "Adult male", scale: 1.0, pharynx: 1.0, tongue_radius: 2.25, lip_width: 4.6 };
-pub const BODY_FEMALE: HumanBody = HumanBody { name: "Adult female", scale: 0.9, pharynx: 0.88, tongue_radius: 2.2, lip_width: 4.4 };
-pub const BODY_CHILD: HumanBody = HumanBody { name: "Child", scale: 0.74, pharynx: 0.8, tongue_radius: 2.15, lip_width: 4.0 };
+pub const BODY_MALE: HumanBody = HumanBody { name: "Adult male", scale: 1.0, pharynx: 1.0, tongue_radius: 2.25, lip_width: 4.6, fold_length: 1.0 };
+pub const BODY_FEMALE: HumanBody = HumanBody { name: "Adult female", scale: 0.9, pharynx: 0.88, tongue_radius: 2.2, lip_width: 4.4, fold_length: 0.67 };
+pub const BODY_CHILD: HumanBody = HumanBody { name: "Child", scale: 0.74, pharynx: 0.8, tongue_radius: 2.15, lip_width: 4.0, fold_length: 0.35 };
 
 /// The three human bodies by their short names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -377,6 +381,7 @@ impl BodyMix {
             pharynx: self.blend(|b| b.body().pharynx),
             tongue_radius: self.blend(|b| b.body().tongue_radius),
             lip_width: self.blend(|b| b.body().lip_width),
+            fold_length: self.blend(|b| b.body().fold_length),
         }
     }
 }

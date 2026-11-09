@@ -124,3 +124,25 @@ fn the_port_seals_later_before_a_voiced_stop() {
         assert!(voiced - voiceless > 10.0, "{name}: /nd/ +{voiced} ms, /nt/ +{voiceless} ms");
     }
 }
+
+/// The loudest pair of blocks (about 5 ms) around a stop's release, dB re the vowel before it.
+fn release_burst(r: &Render) -> f64 {
+    let stop = r.plan.segments.iter().find(|s| s.kind == "stop").unwrap();
+    let vowel = r.plan.segments.iter().find(|s| s.kind == "vowel").unwrap();
+    let mean = |a: f64, b: f64| {
+        let v: Vec<f64> = r.blocks.iter().filter(|x| x.0 > a && x.0 <= b).map(|x| x.1).collect();
+        v.iter().sum::<f64>() / v.len() as f64
+    };
+    let at = r.blocks.iter().filter(|x| x.0 > stop.t1 - 0.01 && x.0 <= stop.t1 + 0.02);
+    let near: Vec<f64> = at.map(|x| x.1).collect();
+    let burst = near.windows(2).map(|w| 0.5 * (w[0] + w[1])).fold(0.0, f64::max);
+    10.0 * (burst / mean(vowel.t0 + 0.03, vowel.t1 - 0.02)).log10()
+}
+
+/// Lips opened at the full area rate from the first sample stepped up the flow's slope: a thump the
+/// speakers' /p/ doesn't have (experiment 27). The male read -4.5 dB here; men's read -11.8 before a vowel.
+#[test]
+fn a_lip_release_starts_slowly() {
+    let b = release_burst(&render("ˈɑpɑ", "male"));
+    assert!(b < -5.0, "/p/ release {b:.1} dB re the vowel");
+}

@@ -254,15 +254,16 @@ impl HumanVoice {
         let x = v.artic.x;
         v.airway.apply(&x, 0.0);
         v.airway.net.snap_to_targets();
-        // smaller bodies radiate more high-frequency (derivative) energy at their higher f0
-        // (a ramp from the adult female's scale up to the adult male's, so blended bodies have no step)
+        // a level match: at their higher f0 smaller bodies radiate more for the same flow, since the
+        // output is the flow's derivative (a ramp from the adult female's scale up to the adult
+        // male's, so blended bodies have no step)
         let sc = v.airway.body.scale;
         v.output_gain *= if sc >= 1.0 {
             1.0
         } else if sc <= 0.9 {
-            0.55
+            0.69
         } else {
-            0.55 + 0.45 * (sc - 0.9) / 0.1
+            0.69 + 0.31 * (sc - 0.9) / 0.1
         };
         v.apply_source();
         v
@@ -309,7 +310,9 @@ impl HumanVoice {
         let s = self.source;
         let g = &mut self.glottis.params;
         let k2 = self.airway.body.scale * self.airway.body.scale;
-        g.amplitude = 0.17 * k2 * (if s.voiced { 1.0 } else { 0.0 });
+        // the pulse's peak area is the vibrating fold's length by how far its edge swings
+        let body = self.airway.body;
+        g.amplitude = 0.17 * body.fold_length * body.scale * (if s.voiced { 1.0 } else { 0.0 });
         g.abduction = (if s.voiced { 0.1 * s.breathiness * s.breathiness } else { 0.2 + 0.1 * s.breathiness }) * k2;
         self.base_abduction = g.abduction;
         self.base_closure = 0.0;
