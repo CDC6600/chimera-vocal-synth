@@ -44,6 +44,20 @@ describe("musicxml-to-notes", () => {
     expect(JSON.parse(r.out)).toEqual({ bpm: 100, lyrics: "one go two end last", notes: [[60, 4], [62, 4], [60, 4], [64, 4], [65, 2], [0, 2]] });
   });
 
+  test("the same form with its attributes in another order and quoting is sung the same", () => {
+    // MuseScore 0.9.5 writes `<ending type="start" number="1">`; XML allows either order and quote
+    const r = run(
+      score([
+        `<barline location="left"><repeat direction='forward'/></barline>${note("C", 4, [["single", "one"], ["single", "two"]])}`,
+        `<barline location="left"><ending type="start" number="1"/></barline>${note("D", 4, [["single", "go"]])}<barline location="right"><ending type="stop" number="1"/><repeat times="2" direction="backward"/></barline>`,
+        `<barline location="left"><ending type='start' number='2'/></barline>${note("E", 4, [["single", "end"]])}<barline location="right"><ending type="discontinue" number="2"/></barline>`,
+        `${note("F", 2, [["single", "last"]])}<note><rest/><duration>2</duration></note>`,
+      ]),
+    );
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toEqual({ bpm: 100, lyrics: "one go two end last", notes: [[60, 4], [62, 4], [60, 4], [64, 4], [65, 2], [0, 2]] });
+  });
+
   test("a word the score splits is joined for the dictionary, and tied notes are one note", () => {
     const r = run(
       score([

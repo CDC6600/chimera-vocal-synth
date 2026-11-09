@@ -50,6 +50,17 @@ function unescape(s: string): string {
   return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 }
 
+/** a start tag's attributes, whatever their order or quotes (`number="1" type="start"` or
+ *  `type='start' number='1'`) */
+function attrsOf(s: string): Record<string, string> {
+  return Object.fromEntries([...s.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((a) => [a[1], unescape(a[2] ?? a[3])]));
+}
+
+/** the attributes of each `<name …>` in `xml`, in document order */
+function attrs(xml: string, name: string): Record<string, string>[] {
+  return [...xml.matchAll(new RegExp(`<${name}(\\s[^>]*)?>`, "g"))].map((m) => attrsOf(m[1] ?? ""));
+}
+
 async function readScore(path: string): Promise<string> {
   if (!path.endsWith(".mxl")) return Bun.file(path).text();
   // the container names the root score file
@@ -87,17 +98,17 @@ const [path, partId] = args;
 if (!path) fail("usage: bun tools/musicxml-to-notes.ts <score.mxl|score.musicxml> [part-id] [--bpm N] [--out part.json] [--spell ba=bah,...]");
 
 const xml = await readScore(path);
-const parts = [...xml.matchAll(/<score-part id="([^"]+)">([\s\S]*?)<\/score-part>/g)].map((m) => ({ id: m[1], name: unescape(tag(m[2], "part-name") ?? "") }));
+const parts = [...xml.matchAll(/<score-part(\s[^>]*)?>([\s\S]*?)<\/score-part>/g)].map((m) => ({ id: attrsOf(m[1] ?? "").id, name: unescape(tag(m[2], "part-name") ?? "") }));
 
 if (!partId) {
   for (const p of parts) console.log(`${p.id}\t${p.name}`);
   process.exit(0);
 }
 
-const body = xml.match(new RegExp(`<part id="${partId}">([\\s\\S]*?)</part>`))?.[1];
+const body = [...xml.matchAll(/<part(\s[^>]*)?>([\s\S]*?)<\/part>/g)].find((m) => attrsOf(m[1] ?? "").id === partId)?.[2];
 if (!body) fail(`no part ${partId}; the parts are: ${parts.map((p) => `${p.id} (${p.name})`).join(", ")}`);
 
-const tempos = [...xml.matchAll(/<sound[^>]*\stempo="([\d.]+)"/g)].map((m) => m[1]);
+const tempos = attrs(xml, "sound").flatMap((a) => (a.tempo ? [a.tempo] : []));
 const bpm = Number(bpmArg ?? tempos[0] ?? fail("the score has no tempo: give --bpm"));
 if (!(bpm > 0)) fail(`bad bpm: ${bpmArg ?? tempos[0]}`);
 if (new Set(tempos).size > 1) console.error(`warning: the score changes tempo (${tempos.join(", ")}); all of it is sung at ${bpm} bpm`);
@@ -109,8 +120,8 @@ const sung: Sung[] = [];
 let divisions = 0;
 let tieOpen = false;
 
-const measures = [...body.matchAll(/<measure\b([^>]*)>([\s\S]*?)<\/measure>/g)].map((m) => ({ number: m[1].match(/number="([^"]+)"/)?.[1] ?? "?", xml: m[2] }));
-const jump = measures.find((m) => /<sound[^>]*\s(dacapo|dalsegno|tocoda|fine)="/.test(m.xml));
+const measures = [...body.matchAll(/<measure(\s[^>]*)?>([\s\S]*?)<\/measure>/g)].map((m) => ({ number: attrsOf(m[1] ?? "").number ?? "?", xml: m[2] }));
+const jump = measures.find((m) => attrs(m.xml, "sound").some((a) => "dacapo" in a || "dalsegno" in a || "tocoda" in a || "fine" in a));
 if (jump) fail(`measure ${jump.number}: D.C., D.S., To Coda and Fine jumps are not supported; write the jumps out in the score`);
 
 // Play order: repeats (`<repeat direction=... times=...>`) and voltas (`<ending number="1, 2">`)
@@ -123,22 +134,24 @@ const order: { number: string; xml: string; pass: number }[] = [];
   let ending: number[] | null = null; // the volta the walk is in, and its passes
   for (let i = 0; i < measures.length; ) {
     const m = measures[i];
-    if (/<repeat direction="forward"/.test(m.xml) && !jumped) {
+    const repeats = attrs(m.xml, "repeat");
+    const endings = attrs(m.xml, "ending");
+    if (repeats.some((r) => r.direction === "forward") && !jumped) {
       start = i;
       pass = 1;
     }
     jumped = false;
-    const begins = m.xml.match(/<ending number="([^"]+)" type="start"/);
-    if (begins) ending = begins[1].split(/[\s,]+/).filter(Boolean).map(Number);
+    const begins = endings.find((e) => e.type === "start");
+    if (begins) ending = (begins.number ?? "").split(/[\s,]+/).filter(Boolean).map(Number);
     const play = !ending || ending.includes(pass);
-    if (/<ending number="[^"]+" type="(stop|discontinue)"/.test(m.xml)) ending = null;
+    if (endings.some((e) => e.type === "stop" || e.type === "discontinue")) ending = null;
     if (!play) {
       i++;
       continue;
     }
     order.push({ ...m, pass });
-    const back = m.xml.match(/<repeat direction="backward"(?:\s+times="(\d+)")?/);
-    if (back && pass < Number(back[1] ?? 2)) {
+    const back = repeats.find((r) => r.direction === "backward");
+    if (back && pass < Number(back.times ?? 2)) {
       pass++;
       i = start;
       jumped = true;
@@ -152,7 +165,7 @@ const order: { number: string; xml: string; pass: number }[] = [];
     i++;
   }
 }
-const verses = new Set([...body.matchAll(/<lyric\b[^>]*\snumber="([^"]+)"/g)].map((m) => m[1]));
+const verses = new Set(attrs(body, "lyric").flatMap((a) => (a.number ? [a.number] : [])));
 const passes = Math.max(...order.map((m) => m.pass));
 if (verses.size > passes) console.error(`warning: the part has ${verses.size} lyric lines (${[...verses].join(", ")}) but is sung ${passes} time(s); each pass sings its own line, the rest are unused`);
 
@@ -178,7 +191,7 @@ for (const { number: measure, xml: mxml, pass } of order) {
     }
     const pitch = tag(x, "pitch") ?? fail(`measure ${measure}: a note with no pitch (unpitched parts are not supported)`);
     const midi = 12 * (Number(tag(pitch, "octave")) + 1) + STEP[tag(pitch, "step") ?? ""] + Math.round(Number(tag(pitch, "alter") ?? 0));
-    const ties = new Set([...x.matchAll(/<tie type="(\w+)"/g)].map((t) => t[1]));
+    const ties = new Set(attrs(x, "tie").map((t) => t.type));
     if (tieOpen && ties.has("stop")) {
       notes[notes.length - 1][1] += beats;
       tieOpen = ties.has("start");
@@ -187,8 +200,8 @@ for (const { number: measure, xml: mxml, pass } of order) {
     tieOpen = ties.has("start");
     notes.push([midi, beats]);
     // each pass through a repeat sings its own verse line when the score has one
-    const lyrics = [...x.matchAll(/<lyric\b([^>]*)>([\s\S]*?)<\/lyric>/g)];
-    const lyric = (lyrics.find((l) => l[1].match(/number="([^"]+)"/)?.[1] === String(pass)) ?? lyrics[0])?.[2] ?? null;
+    const lyrics = [...x.matchAll(/<lyric(\s[^>]*)?>([\s\S]*?)<\/lyric>/g)];
+    const lyric = (lyrics.find((l) => attrsOf(l[1] ?? "").number === String(pass)) ?? lyrics[0])?.[2] ?? null;
     if (lyric === null) {
       if (!sung.length) fail(`measure ${measure}: the first sung note has no lyric, so there is no vowel to hold`);
       sung.push({ melisma: true, measure });
