@@ -26,7 +26,7 @@ const BREATH_SUNG_AT: f64 = 0.06;
 /// (Stevens 1971; Elie & Laprie's "regime B"). Here that is a mean glottal area of about 0.13 cm²,
 /// through constrictions of 0.10-0.18. The pressure behind the constriction then rises and the
 /// voicing weakens by itself, most in /z/, whose constriction is the narrowest. 0.12-0.14 match the
-/// TSP speakers' voicing better; female /z/ can't take them yet (hill-climb log, experiment 23).
+/// TSP speakers' voicing better; `an_f_does_not_click` stops them (hill-climb log, experiments 23 and 32).
 const VOICED_FRICATIVE_OPENING: f64 = 0.09;
 /// /ð/ after a nasal keeps a small opening: the speakers' has no dip there, nasal level throughout, and
 /// this reads about their level (hill-climb log, experiment 24).
@@ -331,7 +331,9 @@ pub fn plan_utterance(input: &[Segment], o: &PlanOptions) -> Plan {
         // phonation
         let k2 = 1.0; // abduction is body-scaled in the voice
         if def.glottal == Some(Glottal::Open) {
-            gestures.push(Gesture::new(t0 - 0.01, t1, 0.03, 0.035, 5.0, one(ControlKey::ABDUCTION, 0.33 * k2)).label("h"));
+            // the folds close 10 ms before the span's end: with the lungs' port fixed, /h/ is 4-5 dB louder and MFA
+            // reads it about that much longer than the speakers' (hill-climb log, experiment 32)
+            gestures.push(Gesture::new(t0 - 0.01, t1 - 0.01, 0.03, 0.035, 5.0, one(ControlKey::ABDUCTION, 0.33 * k2)).label("h"));
         } else if def.glottal == Some(Glottal::Breathy) {
             gestures.push(Gesture::new(t0, t1, 0.03, 0.03, 5.0, one(ControlKey::ABDUCTION, 0.1 * k2)).label("ɦ"));
         } else if def.glottal == Some(Glottal::Stop) {
@@ -477,11 +479,12 @@ fn nasal_closure_delay(place: &str) -> f64 {
 /// a nasal's sound leaves for the nose. After a sibilant the noise falls as the closing area nears its
 /// channel's, and at the tip the tongue is already up: 16-23, 25-35, 14-21. Nothing to aim for
 /// otherwise: a pause, stop or nasal before it has nothing running up to the closure, /f t/ closes on
-/// time, and after /ɹ l/ the tip closes late already (hill-climb log, experiment 26).
+/// time, and after /ɹ l/ the tip closes late already (hill-climb log, experiment 26). The tip's 19 centres its fall
+/// in running speech with the lungs' port fixed (experiment 32).
 fn stop_closure_delay(place: &str, prev: Option<&Seg>) -> f64 {
     let Some(prev) = prev else { return 0.0 };
     let (lips, tip, dorsum) = if prev.vowel.is_some() {
-        (0.005, 0.02, 0.015)
+        (0.005, 0.019, 0.015)
     } else if matches!(prev.ipa, "s" | "z" | "ʃ" | "ʒ") {
         (0.02, 0.03, 0.02)
     } else {

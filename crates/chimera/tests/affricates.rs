@@ -52,7 +52,8 @@ fn frication(fr: &[(f64, f64)], t0: f64, t1: f64, name: &str) -> (usize, usize) 
     let fric: Vec<usize> = (at(t0)..at(t1 + 0.1)).filter(|&i| fr[i].1 < -10.0 && fr[i].0 > vowel - 30.0).collect();
     let (first, last) = (*fric.first().unwrap_or_else(|| panic!("{name}: no frication")), *fric.last().unwrap());
     let voiced = (last..fr.len()).find(|&i| fr[i].0 > vowel - 8.0).unwrap();
-    ((last - first + 1) * 10, (voiced - last - 1) * 10)
+    // the frication's last frame can itself be within 8 dB of the vowel: no gap at all
+    ((last - first + 1) * 10, (voiced - last).saturating_sub(1) * 10)
 }
 
 const VOICES: [(HumanBody, &str, f64); 2] = [(BODY_MALE, "male", 112.0), (BODY_FEMALE, "female", 205.0)];

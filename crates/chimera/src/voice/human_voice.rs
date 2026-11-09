@@ -46,7 +46,16 @@ fn default_brightness() -> f64 {
     DEFAULT_SOURCE.brightness
 }
 
-pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
+/// `pressure` 7.2 holds what the folds read in vowels, 7.1-7.2 cmH₂O, once the lungs' port stopped taking
+/// its 0.8 (hill-climb log, experiment 30).
+pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 7.2, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
+
+/// Vocal effort from the lung pressure (cmH₂O). The folds read 0.8 less than the lungs while the
+/// lungs' port took its share, so `(lungs − 3)/10` was this law on the same folds' pressure. The port's fix
+/// moves neither the folds' pressure nor their effort (hill-climb log, experiment 32).
+fn effort_at(pressure: f64) -> f64 {
+    clamp((pressure.abs() - 2.2) / 10.0, 0.0, 1.0)
+}
 
 /// `Partial<VoiceSource>`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -165,6 +174,8 @@ pub struct HumanVoice {
     /// lung pressure applied this sample, ramped toward `p_lung` across the control block
     p_lung_now: f64,
     p_lung_step: f64,
+    /// the lung port's flow below its corner (cm³/s)
+    lung_flow: f64,
     f0: f64,
     pub output_gain: f64,
     dc_x: f64,
@@ -222,6 +233,7 @@ impl HumanVoice {
             p_lung: 0.0,
             p_lung_now: 0.0,
             p_lung_step: 0.0,
+            lung_flow: 0.0,
             f0: DEFAULT_SOURCE.f0,
             output_gain: 5.5e-7,
             dc_x: 0.0,
@@ -321,6 +333,9 @@ impl HumanVoice {
         // air and damps the tract, which lifts H1 and the band below 500 Hz.
         g.chink = (0.008 + 0.03 * s.breathiness) * k2;
         g.open_quotient = 0.78 - 0.36 * s.tension + body.open_phase;
+        // Zhang 2016 (JASA 139, 1493, table II): closed quotient −0.0247 per degree of resting angle, in a 3D
+        // model whose 0-4° open 0-10.1 mm². It's secondary there to the folds' thickness (hill-climb log, experiment 32)
+        g.open_with_abduction = 0.98;
         // The folds close along their length and depth over a return phase, not all at once, so
         // a sung or spoken voice closes softly (0.22 at tension 0.55): an abrupt closure put
         // 3-8 dB too much energy above 2 kHz. Pressing harder than that brings the abrupt closure
@@ -340,13 +355,14 @@ impl HumanVoice {
         g.vibrato_depth = s.vibrato_depth;
         g.vibrato_rate = s.vibrato_rate;
         g.drift = s.drift;
-        g.effort = clamp((s.pressure.abs() - 3.0) / 10.0, 0.0, 1.0);
+        g.effort = effort_at(s.pressure);
     }
 
     /// Render `out.len()` output samples.
     pub fn render(&mut self, out: &mut [f32]) {
         let m = self.m;
         let lungs = self.airway.lungs;
+        let (lung_port, lung_excess, lung_coef) = (self.airway.lung_port, self.airway.lung_port_excess, self.airway.lung_port_coef);
         let sub_node = self.airway.trachea.last_node();
         let supra = self.airway.pharynx.first_node();
         let gp = self.airway.glottis_port;
@@ -362,7 +378,10 @@ impl HumanVoice {
                 self.ctrl_counter -= 1;
                 let net = &mut self.airway.net;
                 self.p_lung_now += self.p_lung_step;
-                net.set_fixed_pressure(lungs, self.p_lung_now);
+                // the port's resistance is for sound: below its corner the lungs give back what it
+                // takes beyond the lower airways' own, a passive R_dc + R·s/(s + ωc)
+                self.lung_flow += lung_coef * (net.u[lung_port] - self.lung_flow);
+                net.set_fixed_pressure(lungs, self.p_lung_now + lung_excess * self.lung_flow);
                 let a = self.glottis.next(net.p[sub_node] - net.p[supra]);
                 net.set_port_area(gp, a);
                 let y = net.step();
@@ -497,7 +516,7 @@ impl HumanVoice {
         self.p_lung_step = (self.p_lung - self.p_lung_now) / self.ctrl_every as f64;
         // vocal effort follows the pressure actually applied: a harder breath (a louder sung note)
         // gives wider, sharper-closing pulses, as in real phonation, not just more flow
-        self.glottis.params.effort = clamp(((self.source.pressure * self.gate).abs() - 3.0) / 10.0, 0.0, 1.0);
+        self.glottis.params.effort = effort_at(self.source.pressure * self.gate);
         // pitch glide
         let g = js_max(0.002, if self.score_f0.is_some() { 0.03 } else { self.source.glide });
         self.f0 *= pow(f0_target / self.f0, 1.0 - exp(-dt / g));

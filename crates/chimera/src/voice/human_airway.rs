@@ -6,14 +6,24 @@
 
 use crate::airway::network::{AirwayNetwork, Area, NoiseSpec, PortSpec, Tube, TubeSpec};
 use crate::anatomy::human::{HumanArtic, HumanBody, HumanFrame, HumanVocalTract};
-use crate::math::{PI, js_max, js_min, js_round, smoothstep as smooth, sqrt};
-use crate::physics::{C_SOUND, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
+use crate::math::{PI, exp, js_max, js_min, js_round, smoothstep as smooth, sqrt};
+use crate::physics::{C_SOUND, CM_H2O, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
 
 /// The teeth source's band tops out at f = St·u/δ, the jet's speed and eddy size where it meets the
 /// teeth. St is of order 1 for a near-circular jet such as /s/ or /ʃ/ (Krane 2005, JASA 118, eq. 13),
-/// and the real speakers' /s/ and /ʃ/ (TSP) start to fall at about this model's v/D. 1.15 is the
-/// value kept of those tried (hill-climb log, experiment 21).
-const TEETH_STROUHAL: f64 = 1.15;
+/// and 1.0 is that, with no fitted factor. The real speakers' /s/ and /ʃ/ (TSP) start to fall at 0.8-1.0
+/// of this model's v/D (hill-climb log, experiments 21, 30 and 32).
+const TEETH_STROUHAL: f64 = 1.0;
+/// Lower-airway resistance, male (cmH₂O per L/s): what air flowing out of the lungs loses below the
+/// modelled trachea. Plethysmography gives 1.3-1.5 from the mouth to the alveoli (DuBois 1956, Fisher
+/// 1968), 1.40 in eight young men (Juntendo 1980); about 1/3-1/2 of it is above the mid-trachea (Ferris
+/// 1964 and others), in what the tract already models, and the rest is linear up to 2 L/s (Ferris
+/// 1964). A woman's 1.87 in the same study is 1.34 times his, about 1/k³ (0.9 → 1.37): Poiseuille's
+/// ℓ/r⁴, as resistance goes with 1/lung volume (hill-climb log, experiment 30).
+const LOWER_AIRWAY_R: f64 = 0.8;
+/// The gas's inertance in the bronchial tree below the trachea, male (g/cm⁴): ρ·Σℓ/A over Weibel's model
+/// A is about 4.6 /cm. Body scale k: 1/k, as ℓ/A.
+const LOWER_AIRWAY_L: f64 = 5.2e-3;
 /// A turbulent mixing layer grows about as δ ≈ 0.17·x (textbook range, Pope 2000, ch. 5), so δ
 /// reaches the jet's diameter about 6 D downstream, where a round jet's core ends.
 const JET_SPREAD: f64 = 0.17;
@@ -39,6 +49,13 @@ pub struct HumanAirway {
     pub nasal: Tube,
     pub fossa: Tube,
     pub lungs: usize,
+    pub lung_port: usize,
+    /// what the lung port's resistance has over the lower airways' (dyn·s/cm⁵)
+    pub lung_port_excess: f64,
+    /// one-pole coefficient per internal sample at the corner where the lower airways' inertance
+    /// reaches that excess: below it the lungs see the lower airways' resistance, above it the
+    /// port's acoustic termination
+    pub lung_port_coef: f64,
     pub glottis_port: usize,
     pub velum_port: usize,
     pub rad_lips: usize,
@@ -120,7 +137,12 @@ impl HumanAirway {
 
         let lungs = net.add_pressure_node("lungs");
         let tr_a = 2.5 * k * k;
-        net.add_port(lungs, trachea.first_node(), PortSpec::new(tr_a, 1.0).kinetic(0.0, 0.0).resistance((0.5 * RHO * C_SOUND) / tr_a));
+        // half the trachea's characteristic impedance terminates its sound. That's a value for waves,
+        // not for the steady flow: at /ʃ/'s 0.5 L/s it took 4 of the lungs' 8 cmH₂O
+        let r_ac = (0.5 * RHO * C_SOUND) / tr_a;
+        let lung_port = net.add_port(lungs, trachea.first_node(), PortSpec::new(tr_a, 1.0).kinetic(0.0, 0.0).resistance(r_ac));
+        let lung_port_excess = r_ac - LOWER_AIRWAY_R * (CM_H2O / 1000.0) / (k * k * k);
+        let lung_port_coef = 1.0 - exp((-lung_port_excess * k / LOWER_AIRWAY_L) / fs);
         let glottis_port = net.add_port(trachea.last_node(), pharynx.first_node(), PortSpec::new(0.0, 0.3 * k).kinetic(0.37, 1.0).slit(1.4 * k));
         net.connect(pharynx.last_node(), oral.first_node());
         let velum_port = net.add_port(pharynx.last_node(), nasal.first_node(), PortSpec::new(0.0, 1.0 * k).kinetic(0.3, 0.8));
@@ -143,6 +165,9 @@ impl HumanAirway {
             nasal,
             fossa,
             lungs,
+            lung_port,
+            lung_port_excess,
+            lung_port_coef,
             glottis_port,
             velum_port,
             rad_lips,
@@ -156,7 +181,7 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 1.364e-6, teeth: 3.0e-6 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -330,7 +355,9 @@ impl HumanAirway {
                 // obstacle source: a narrow anterior jet impinging on the incisors (sibilants)
                 let s_min = if min_i < n_ph_i { (min_i as f64 + 0.5) * dx_ph } else { self.ph_len + ((min_i - n_ph_i) as f64 + 0.5) * dx_or };
                 let behind = (f.teeth_s - s_min) / self.body.scale;
-                let w_dist = smooth(0.15, 0.5, behind) * (1.0 - smooth(2.6, 4.0, behind));
+                // a jet that leaves its channel at the teeth doesn't strike them: /θ/'s narrowest section
+                // sits 0.7-0.9 cm behind them, /s/'s 1.8-1.9 (hill-climb log, experiment 30)
+                let w_dist = smooth(1.0, 1.5, behind) * (1.0 - smooth(2.6, 4.0, behind));
                 let w_jet = 1.0 - smooth(0.2 * k2, 0.5 * k2, min_a);
                 let wt = w_dist * w_jet;
                 if wt > 1e-3 {

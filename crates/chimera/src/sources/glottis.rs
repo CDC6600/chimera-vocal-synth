@@ -22,6 +22,8 @@ pub struct GlottisParams {
     pub chink: f64,
     /// open quotient 0..1
     pub open_quotient: f64,
+    /// how much of the cycle folds held apart lose of their closed phase, per cm² of abduction
+    pub open_with_abduction: f64,
     /// fraction of the open phase spent opening (0.5 symmetric, larger = faster closing)
     pub skew: f64,
     /// 0 = smooth (raised-cosine) closure, 1 = abrupt slope at closure
@@ -54,6 +56,7 @@ pub const DEFAULT_GLOTTIS: GlottisParams = GlottisParams {
     abduction: 0.0,
     chink: 0.006,
     open_quotient: 0.62,
+    open_with_abduction: 0.0,
     skew: 0.62,
     closure_sharpness: 0.6,
     effort: 0.7,
@@ -200,6 +203,8 @@ impl ParametricGlottis {
 
         // pulse shape within the cycle
         let mut oq = clamp(p.open_quotient - 0.18 * (p.effort - 0.5), 0.25, 0.98);
+        // the chink is left out: it's a gap behind folds that still meet
+        oq = js_min(0.98, oq + p.open_with_abduction * js_max(0.0, self.static_sm - p.chink));
         if p.fry > 0.0 {
             oq = oq * (1.0 - p.fry) + 0.28 * p.fry;
         }
