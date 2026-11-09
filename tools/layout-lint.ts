@@ -276,8 +276,10 @@ async function main() {
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
-  // WebGL through SwiftShader, for the 3D face
-  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  // WebGL for the 3D face: the GPU through Metal on a Mac; elsewhere SwiftShader, which draws on the
+  // CPU (it took 6-15x the CPU time on an M4 for the same report, enough to stall the machine)
+  const gl = process.platform === "darwin" ? ["--use-angle=metal", "--ignore-gpu-blocklist"] : ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"];
+  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", ...gl] });
   let errors = 0, warnings = 0, views = 0;
   for (const { w, h } of viewports) {
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
