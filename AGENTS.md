@@ -55,3 +55,4 @@ and the CLI) under a React UI. See the README.
 | `crates/chimera/` sound | re-bless goldens (above); `cargo run --release -q -p chimera --example bench` against the previous commit |
 | `crates/chimera-wasm/`, `src/wasm/`, `src/worklet/`, `src/main.tsx` | `bun run build && bun run preview`, then `bun tools/e2e.ts` |
 | `src/ui/`, `src/show/`, CSS | `bun run lint:layout` |
+| `tools/throat-track.py`, `tools/focus-throat.py` | `python -m unittest discover -s tools -p 'test_throat_track.py'` in the environment from `docs/throat-singing.md` |
