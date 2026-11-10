@@ -61,7 +61,7 @@ bun tools/musicxml-to-notes.ts score.mxl P1 --out p1.json   # a score's part →
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md): the acoustic model (FDTD airway, sources,
-  anatomy, gestures).
+  anatomy, gestures), and its [references and credits](docs/architecture.md#references-and-credits).
 - [docs/rust-engine.md](docs/rust-engine.md): the engine's real-time and determinism contract,
   and the browser boundary.
 - [docs/ui-redesign.md](docs/ui-redesign.md) and [docs/mockups/](docs/mockups/): the vector
