@@ -53,6 +53,30 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${outDir}/${tag}-2-played.png` });
   await page.keyboard.up("d");
+  // Z and X move the on-screen keys at once (they waited for the next note, and a click on them
+  // meanwhile played the old octave)
+  const firstKey = page.locator(".keys .key.white").first();
+  const lowest = await firstKey.getAttribute("aria-label");
+  await page.keyboard.press("x");
+  const raised = await firstKey.getAttribute("aria-label");
+  await page.keyboard.press("z");
+  const back = await firstKey.getAttribute("aria-label");
+  logs.push(`[${tag}] octave keys: ${lowest} → x → ${raised} → z → ${back}`);
+  const num = (l: string | null) => Number(l?.replace("Note ", ""));
+  if (num(raised) !== num(lowest) + 12 || back !== lowest) errors.push(`[${tag}] Z/X didn't move the on-screen keys: ${lowest} → ${raised} → ${back}`);
+  // a key held with the mouse while X redraws it away is still released when the mouse lifts
+  await firstKey.scrollIntoViewIfNeeded();
+  const kb = (await firstKey.boundingBox())!;
+  await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height - 10);
+  await page.mouse.down();
+  const pressed = await page.locator(".keys .key.down").count();
+  await page.keyboard.press("x");
+  await page.mouse.up();
+  await page.keyboard.press("z");
+  const stuck = await page.locator(".keys .key.down").count();
+  logs.push(`[${tag}] octave keys: ${pressed} held with the mouse across X, ${stuck} still down after release`);
+  if (pressed !== 1) errors.push(`[${tag}] the mouse didn't hold the lowest on-screen key (${pressed} down)`);
+  if (stuck) errors.push(`[${tag}] a key held with the mouse while X was pressed stayed down after the mouse lifted`);
   const loadText = await page.locator(".load").textContent().catch(() => null);
   logs.push(`[${tag}] load: ${loadText}`);
   // speak mode
@@ -199,6 +223,6 @@ await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing/i.test(l)).slice(0, 40).join("\n"));
+console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing|octave/i.test(l)).slice(0, 40).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);
