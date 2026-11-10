@@ -221,10 +221,36 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// the voice runs at 48 kHz on a 192 kHz device: at the device's rate it took ~3x the CPU and
+// starved the worklet (issue #33). The patched constructor plays a device whose default is 192 kHz.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on("pageerror", (e) => errors.push(`[device-rate] pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const Device = window.AudioContext;
+    window.AudioContext = class extends Device {
+      constructor(o: AudioContextOptions = {}) {
+        super({ sampleRate: 192000, ...o });
+      }
+    };
+  });
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.getByRole("radio", { name: "Play" }).click();
+  await page.getByRole("button", { name: /breathe in and start/i }).click();
+  await page.waitForTimeout(1500);
+  const rate = await page.evaluate(() => {
+    // @ts-expect-error debug handle
+    return window.__chimeraEngine?.ctx?.sampleRate ?? -1;
+  });
+  logs.push(`[device-rate] a 192 kHz device runs the voice at ${rate} Hz`);
+  if (rate !== 48000) errors.push(`[device-rate] the voice ran at ${rate} Hz on a 192 kHz device (want 48000)`);
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing|octave/i.test(l)).slice(0, 40).join("\n"));
+console.log(logs.filter((l) => /load|rate|warn|transcription|creature|held|back to|beatbox|silence|sing|octave/i.test(l)).slice(0, 40).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);
