@@ -231,6 +231,20 @@ interface DemoRun {
 let demoRun: DemoRun | null = null;
 /** bumped by every stop: a demo still waiting for audio or the dictionary then gives up */
 let demoToken = 0;
+/**
+ * The player's own lyrics and cursor while a demo shows the song's words: given back when the
+ * demo ends or stops, so a demo never costs anyone the words they typed.
+ */
+let ownWords: { lyrics: string; cursor: number } | null = null;
+
+function endDemo(): void {
+  demoRun = null;
+  const w = ownWords;
+  ownWords = null;
+  if (!w) return void useSing.setState({ demo: null, demoAt: -1 });
+  const syllables = lyricsToSyllables(w.lyrics);
+  useSing.setState({ demo: null, demoAt: -1, lyrics: w.lyrics, syllables, cursor: Math.min(w.cursor, Math.max(0, syllables.length - 1)) });
+}
 
 engine.onPlanned((m) => {
   const d = demoRun;
@@ -239,7 +253,10 @@ engine.onPlanned((m) => {
   d.times.forEach(([a, b], k) => addNote(d.midi[k], m.t0 + a, d.text[k], true, m.t0 + b - 0.02));
 });
 
-/** Sing a demo song (after `ready`, e.g. audio startup, resolves; unless stopped meanwhile). */
+/**
+ * Sing a demo song (after `ready`, e.g. audio startup, resolves; unless stopped meanwhile). The
+ * lyrics show the song's words while it plays; the player's own come back when it ends or stops.
+ */
 export async function playDemo(name: string, body: BodyMix, ready?: () => Promise<void>): Promise<void> {
   const song = DEMO_SONGS.find((s) => s.name === name);
   if (!song) return;
@@ -270,6 +287,8 @@ export async function playDemo(name: string, body: BodyMix, ready?: () => Promis
   notes.forEach((n, i) => parent.push(n.syl.melisma && i > 0 ? parent[i - 1] : i));
   const shown = parent.map((p) => written(notes[p].syl));
   demoRun = { id, times, midi: notes.map((n) => n.midi), text: notes.map((n) => n.syl.text), shown, parent, end: plan.end, offset: null };
+  const s = useSing.getState();
+  ownWords ??= { lyrics: s.lyrics, cursor: s.cursor };
   useSing.setState({ lyrics: song.lyrics, syllables: syl, cursor: 0, demo: song.name, demoAt: -1 });
 }
 
@@ -277,13 +296,12 @@ function stopDemo(): void {
   demoToken++;
   const d = demoRun;
   if (!d) return;
-  demoRun = null;
   engine.stopSpeech();
   // notes not yet sung leave the roll; the one sounding ends now
   const t = now();
   roll.notes = roll.notes.filter((n) => !(n.demo && n.t0 > t));
   for (const n of roll.notes) if (n.demo && n.t1 !== null && n.t1 > t) n.t1 = t;
-  useSing.setState({ demo: null, demoAt: -1 });
+  endDemo();
 }
 
 /** Called every frame while Sing mode is shown: follow the demo's progress. */
@@ -291,11 +309,7 @@ export function tickSinging(): void {
   const d = demoRun;
   if (!d || d.offset === null) return;
   const t = now() - d.offset;
-  if (t > d.end + 0.4) {
-    demoRun = null;
-    useSing.setState({ demo: null, demoAt: -1 });
-    return;
-  }
+  if (t > d.end + 0.4) return endDemo();
   let k = -1;
   while (k + 1 < d.times.length && d.times[k + 1][0] <= t) k++;
   if (k !== useSing.getState().demoAt) useSing.setState({ demoAt: k });

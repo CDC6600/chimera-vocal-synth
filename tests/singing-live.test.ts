@@ -15,10 +15,12 @@ const midiToHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 const FS = 48000;
 let voice = new WasmVoice(FS);
+/** what the worklet answers when a scheduled plan starts (singing.ts registers one at import) */
+let planned: (m: { type: "planned"; id: number; t0: number; end: number }) => void = () => {};
 const fakeEngine = {
   latest: null,
   voiceClock: () => voice.clock,
-  onPlanned: () => () => {},
+  onPlanned: (f: typeof planned) => ((planned = f), () => {}),
   scheduleGestures: (gs: Gesture[], lead = 0.006) => {
     voice.schedule(gs, lead);
   },
@@ -39,7 +41,7 @@ const engineStub = new Proxy(
   { get: (t, k) => (k in t ? t[k as string] : () => {}), set: (t, k, v) => ((t[k as string] = v), true) },
 );
 mock.module("../src/audio/AudioEngine.ts", () => ({ engine: engineStub }));
-const { useSing, singNoteOn, singNoteOff, playDemo, stopSinging } = await import("../src/ui/singing.ts");
+const { useSing, singNoteOn, singNoteOff, playDemo, stopSinging, tickSinging } = await import("../src/ui/singing.ts");
 const gesturesOf = () => voice.score();
 /** breath the score is giving now (strength-weighted activation of breath gestures) */
 const breathNow = () => {
@@ -155,6 +157,38 @@ describe("Sing mode, live keys", () => {
     expect(useSing.getState().demo).toBe("Made of air");
     stopSinging();
     engineStub.schedule = schedule;
+  });
+
+  test("a demo shows the song's words while it plays, then gives the player's own back", async () => {
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    sing().setLyrics("my own words to sing");
+    sing().setCursor(2);
+    // stopped (a song chip pressed again, the mode or body changed)
+    await playDemo("Made of air", MALE, () => Promise.resolve());
+    expect(sing().demo).toBe("Made of air");
+    expect(sing().lyrics).not.toBe("my own words to sing");
+    stopSinging();
+    expect(sing().lyrics).toBe("my own words to sing");
+    expect(sing().syllables.map((s) => s.text)).toEqual(["my", "own", "words", "to", "sing"]);
+    expect(sing().cursor).toBe(2);
+    // played to the end
+    await playDemo("Made of air", MALE, () => Promise.resolve());
+    planned({ type: "planned", id: 1, t0: voice.clock - 1000, end: 0 });
+    tickSinging();
+    expect(sing().demo).toBeNull();
+    expect(sing().lyrics).toBe("my own words to sing");
+    expect(sing().cursor).toBe(2);
+    // a second song started while the first plays gives back the player's words, not the first song's
+    await playDemo("Made of air", MALE, () => Promise.resolve());
+    await playDemo("Made of air", MALE, () => Promise.resolve());
+    stopSinging();
+    expect(sing().lyrics).toBe("my own words to sing");
+    // words typed during a demo are the player's from then on
+    await playDemo("Made of air", MALE, () => Promise.resolve());
+    sing().setLyrics("typed during the song");
+    expect(sing().demo).toBeNull();
+    expect(sing().lyrics).toBe("typed during the song");
   });
 
   test("a quick next note drops the last one's breath-out; leaving Sing cancels a pending ending", () => {
