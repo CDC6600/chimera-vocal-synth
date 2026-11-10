@@ -27,6 +27,8 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${outDir}/${tag}-0-idle.png` });
+  // the app opens on Sing; this run starts in Play
+  await page.getByRole("radio", { name: "Play" }).click();
   const startBtn = page.getByRole("button", { name: /breathe in and start/i });
   await startBtn.click();
   await page.waitForTimeout(1800);
@@ -53,6 +55,30 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${outDir}/${tag}-2-played.png` });
   await page.keyboard.up("d");
+  // Z and X move the on-screen keys at once (they waited for the next note, and a click on them
+  // meanwhile played the old octave)
+  const firstKey = page.locator(".keys .key.white").first();
+  const lowest = await firstKey.getAttribute("aria-label");
+  await page.keyboard.press("x");
+  const raised = await firstKey.getAttribute("aria-label");
+  await page.keyboard.press("z");
+  const back = await firstKey.getAttribute("aria-label");
+  logs.push(`[${tag}] octave keys: ${lowest} → x → ${raised} → z → ${back}`);
+  const num = (l: string | null) => Number(l?.replace("Note ", ""));
+  if (num(raised) !== num(lowest) + 12 || back !== lowest) errors.push(`[${tag}] Z/X didn't move the on-screen keys: ${lowest} → ${raised} → ${back}`);
+  // a key held with the mouse while X redraws it away is still released when the mouse lifts
+  await firstKey.scrollIntoViewIfNeeded();
+  const kb = (await firstKey.boundingBox())!;
+  await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height - 10);
+  await page.mouse.down();
+  const pressed = await page.locator(".keys .key.down").count();
+  await page.keyboard.press("x");
+  await page.mouse.up();
+  await page.keyboard.press("z");
+  const stuck = await page.locator(".keys .key.down").count();
+  logs.push(`[${tag}] octave keys: ${pressed} held with the mouse across X, ${stuck} still down after release`);
+  if (pressed !== 1) errors.push(`[${tag}] the mouse didn't hold the lowest on-screen key (${pressed} down)`);
+  if (stuck) errors.push(`[${tag}] a key held with the mouse while X was pressed stayed down after the mouse lifted`);
   const loadText = await page.locator(".load").textContent().catch(() => null);
   logs.push(`[${tag}] load: ${loadText}`);
   // speak mode
@@ -195,10 +221,36 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// the voice runs at 48 kHz on a 192 kHz device: at the device's rate it took ~3x the CPU and
+// starved the worklet (issue #33). The patched constructor plays a device whose default is 192 kHz.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on("pageerror", (e) => errors.push(`[device-rate] pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const Device = window.AudioContext;
+    window.AudioContext = class extends Device {
+      constructor(o: AudioContextOptions = {}) {
+        super({ sampleRate: 192000, ...o });
+      }
+    };
+  });
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.getByRole("radio", { name: "Play" }).click();
+  await page.getByRole("button", { name: /breathe in and start/i }).click();
+  await page.waitForTimeout(1500);
+  const rate = await page.evaluate(() => {
+    // @ts-expect-error debug handle
+    return window.__chimeraEngine?.ctx?.sampleRate ?? -1;
+  });
+  logs.push(`[device-rate] a 192 kHz device runs the voice at ${rate} Hz`);
+  if (rate !== 48000) errors.push(`[device-rate] the voice ran at ${rate} Hz on a 192 kHz device (want 48000)`);
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing/i.test(l)).slice(0, 40).join("\n"));
+console.log(logs.filter((l) => /load|rate|warn|transcription|creature|held|back to|beatbox|silence|sing|octave/i.test(l)).slice(0, 40).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);

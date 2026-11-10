@@ -58,7 +58,10 @@ export class AudioEngine {
       await this.ctx.resume();
       return;
     }
-    const ctx = new AudioContext({ latencyHint: "interactive" });
+    // 48 kHz whatever the device runs at (the browser resamples): the airway's cost grows with
+    // the square of its rate, and a 192 kHz device took ~3x the CPU of 48 kHz and starved the
+    // worklet (load 120-150%, no sound; issue #33)
+    const ctx = new AudioContext({ latencyHint: "interactive", sampleRate: 48000 });
     this.ctx = ctx;
     this.sampleRate = ctx.sampleRate;
     await ctx.audioWorklet.addModule(workletUrl);

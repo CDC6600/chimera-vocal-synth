@@ -15,7 +15,7 @@ use crate::control::score::{Gesture, GestureScore};
 use crate::creatures::types::CreatureDef;
 use crate::creatures::voice::{CreatureTelemetry, CreatureVoice};
 use crate::phonetics::beatbox::{BeatStep, MAX_SOUND_GESTURES};
-use crate::voice::human_voice::{HumanVoice, SourcePatch, VoiceTelemetry};
+use crate::voice::human_voice::{HumanVoice, SourcePatch, VoiceTelemetry, oversample_for};
 
 /// Samples per sub-block: the browser's render quantum, kept for every host.
 pub const SUB_BLOCK: usize = 128;
@@ -66,7 +66,7 @@ impl Engine {
     }
 
     fn make_voice(fs: f64, body: BodyMix) -> HumanVoice {
-        let mut v = HumanVoice::new(fs, body.body(), if fs > 60000.0 { 1 } else { 2 });
+        let mut v = HumanVoice::new(fs, body.body(), oversample_for(fs));
         v.set_source(&SourcePatch::f0(default_f0(body)));
         v
     }

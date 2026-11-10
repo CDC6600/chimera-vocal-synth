@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { midiSupported } from "../midi.ts";
 import { nearestBody, type BodyMix } from "../body.ts";
@@ -15,8 +15,15 @@ export function Keys() {
   const noteOn = useStore((s) => s.noteOn);
   const noteOff = useStore((s) => s.noteOff);
   const start = useStore((s) => s.start);
+  // the key handler reads the ref (it is set up once); the state redraws the keys on Z and X
   const octave = useRef(0);
-  const base = BASE(body) + octave.current * 12;
+  const [shownOctave, setShownOctave] = useState(0);
+  const base = BASE(body) + shownOctave * 12;
+  /**
+   * on-screen key held by a pointer → the note it played, released when that pointer lifts
+   * anywhere: Z, X or a body change can redraw the keys under a held finger and drop its button
+   */
+  const byPointer = useRef(new Map<number, number>());
 
   useEffect(() => {
     /** pressed key → the note it played (released as that note, whatever the body or octave now) */
@@ -28,8 +35,10 @@ export function Keys() {
         if ((target as HTMLInputElement).type !== "range" && (target as HTMLInputElement).type !== "checkbox") return;
       }
       const k = e.key.toLowerCase();
-      if (k === "z") octave.current = Math.max(-2, octave.current - 1);
-      if (k === "x") octave.current = Math.min(2, octave.current + 1);
+      if (k === "z" || k === "x") {
+        octave.current = Math.max(-2, Math.min(2, octave.current + (k === "z" ? -1 : 1)));
+        setShownOctave(octave.current);
+      }
       if (!(k in KEYMAP) || down.has(k)) return;
       const midi = BASE(useStore.getState().body) + octave.current * 12 + KEYMAP[k];
       down.set(k, midi);
@@ -48,13 +57,23 @@ export function Keys() {
       for (const midi of down.values()) noteOff(midi);
       down.clear();
     };
+    const onPointerUp = (e: PointerEvent) => {
+      const midi = byPointer.current.get(e.pointerId);
+      if (midi === undefined) return;
+      byPointer.current.delete(e.pointerId);
+      noteOff(midi);
+    };
     window.addEventListener("keydown", onDown);
     window.addEventListener("keyup", onUp);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     return () => {
       window.removeEventListener("keydown", onDown);
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [noteOn, noteOff, start]);
 
@@ -63,17 +82,17 @@ export function Keys() {
   const whites = notes.filter((m) => !isBlack(m));
   const press = (m: number) => (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture(e.pointerId);
+    byPointer.current.set(e.pointerId, m);
     void start();
     noteOn(m);
   };
-  const release = (m: number) => () => noteOff(m);
   return (
     <div className="keys-row">
       <MidiButton />
       <div className="keys" data-layout="layered" aria-label="Keyboard. Computer keys A to semicolon play notes; Z and X change octave.">
         <div className="white-row">
           {whites.map((m) => (
-            <button key={m} className={`key white${held.includes(m) ? " down" : ""}`} onPointerDown={press(m)} onPointerUp={release(m)} onPointerCancel={release(m)} aria-label={`Note ${m}`} />
+            <button key={m} className={`key white${held.includes(m) ? " down" : ""}`} onPointerDown={press(m)} aria-label={`Note ${m}`} />
           ))}
         </div>
         <div className="black-row">
@@ -81,7 +100,7 @@ export function Keys() {
             const b = m + 1;
             const hasBlack = isBlack(b) && i < whites.length - 1;
             return hasBlack ? (
-              <button key={b} className={`key black${held.includes(b) ? " down" : ""}`} style={{ left: `calc(${((i + 1) / whites.length) * 100}% - 1.1%)` }} onPointerDown={press(b)} onPointerUp={release(b)} onPointerCancel={release(b)} aria-label={`Note ${b}`} />
+              <button key={b} className={`key black${held.includes(b) ? " down" : ""}`} style={{ left: `calc(${((i + 1) / whites.length) * 100}% - 1.1%)` }} onPointerDown={press(b)} aria-label={`Note ${b}`} />
             ) : null;
           })}
         </div>

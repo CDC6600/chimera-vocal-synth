@@ -7,6 +7,8 @@ and the CLI) under a React UI. See the README.
 
 - Do what was asked, the simplest way. Side work nobody asked for (experiments, tooling, paid
   runs) is a proposal with its cost. If the work grows well past the estimate, stop and say so.
+- Weigh every feature against README → Vision & scope; anything outside it is a proposal with
+  its cost, not work to do.
 - Before repeating or reversing earlier work, read its history (`git log -- <path>`, `git log -S`).
 - Commit small. The subject names what changed and the trap, in searchable words; the body gives
   the why, what you ruled out, what you ran (with numbers) and what you didn't test.
@@ -30,6 +32,9 @@ and the CLI) under a React UI. See the README.
 - **The engine's contract** (`docs/rust-engine.md`): transcendental math only through
   `chimera::math`, no allocation while rendering, output independent of block size. `cargo test`
   enforces each.
+- **The voice must hold at any device sample rate** (a Bluetooth headset runs the page at 16 kHz,
+  and an airway simulated too slowly goes NaN: silence, no error). Check:
+  `cargo test -p chimera --test engine the_voice_holds`.
 - **Any change to the sound or the plans fails the golden tests, by design.** Re-bless with
   `CHIMERA_BLESS=1 cargo test --workspace --no-fail-fast`, run twice. Human-voice audio, plans
   (including the beat sounds' gestures and the beat player), the tract geometry and the human

@@ -145,3 +145,77 @@ limiter. WAV export via the same engine in a Worker (unlimited voices, faster th
 * Fricative and burst realism depends on noise-source calibration (gain, placement, spectrum).
 * Geometry → area calibration decides vowel quality.
 * Self-oscillating valves (trills) can be finicky; keep parametric fallbacks.
+
+## References and credits
+
+The engine isn't a port of another synthesizer. It was written for this project, first in
+TypeScript and then ported to Rust, by the owner working with AI coding agents (the commit
+history shows both). It contains no other synthesizer's code: its only dependencies are the
+`libm` crate (a Rust port of musl's math library) and `serde`. The design notes above name
+models more often than papers. This section lists only what the code, its comments, the docs
+and the commit history actually cite, and says where they cite nothing.
+
+### What the voice builds on
+
+- **Airway walls** (`physics.rs`): the soft-tissue mass, resistance and stiffness per unit area
+  come from Ishizaka, French & Flanagan (1975). The trachea's stiffer values aren't attributed.
+- **Radiation** at the lips, nostrils and beak (`airway/network.rs`): Flanagan's parallel R–L
+  load. The code names Flanagan but no publication.
+- **Vowel targets** (`phonetics/vowel_data.rs`, `chimera calibrate`): the English vowels are
+  calibrated to the men's, women's and children's means of Hillenbrand, Getty, Clark & Wheeler
+  (1995). The other vowels use "typical literature values" whose source isn't recorded.
+- **Segment durations** (`phonetics/durations.rs`): Klatt's (1979) duration rules as given for
+  MITalk in Allen, Hunnicutt & Klatt (1987), ch. 9.
+- **Gestures** (`control/score.rs`, `control/articulators.rs`, `phonetics/planner.rs`): the code
+  calls its gestural score "Articulatory Phonology style", its articulator dynamics
+  "Task-Dynamics style", and its vowel-to-vowel coarticulation Öhman's. These are the frameworks
+  of Browman & Goldstein, Saltzman & Munhall, and Öhman. CHIMERA takes their ideas, not a
+  formulation from any one paper.
+- **Articulator speeds** (`control/articulators.rs`): checked against VocalTractLab's
+  (P. Birkholz) fitted time constants, mostly 5–40 ms. Only as a range to check against: no
+  VocalTractLab code or data is used.
+- **Songbird syrinx** (`sources/syrinx.rs`): the labial oscillator is what the code calls the
+  Gardner–Mindlin normal form. The repo doesn't record which paper it came from.
+- **Voice-source defaults**, from the tuning log ([hill-climb/log.md](hill-climb/log.md)): the
+  posterior glottal chink that stays open through closure follows Södersten & Lindestad (1990)
+  (experiment 3); the 6 Hz default vibrato rate follows Prame (1994) (experiment 9). The log
+  cites more papers for experiments that were reverted; those changes aren't in the engine.
+- **Pronunciation**: the CMU Pronouncing Dictionary (bundled, BSD licence).
+
+### Standard methods
+
+Textbook techniques with no single source behind them: the staggered-grid (leapfrog) FDTD
+transmission line, Borda–Carnot expansion loss, Reynolds-number turbulence noise, Crank–Nicolson
+coupling of the radiation load, the frequency-domain chain-matrix analysis, Kaiser-windowed sinc
+decimation, LPC (autocorrelation with Levinson–Durbin, roots by Durand–Kerner), the radix-2 FFT,
+Nelder–Mead, Catmull–Rom splines, maximal-onset syllabification, and the van der Pol and
+Rayleigh–Plesset oscillators behind some creature sounds.
+
+### Not attributed
+
+- **The airway model as a whole.** Section 1 explains why it is an FDTD network rather than
+  Kelly–Lochbaum, but no paper or earlier implementation is cited for it.
+- **The area function** (`anatomy/human.rs`): the semipolar grid and the A = α·d^β law have
+  the same form as the usual sagittal-distance-to-area conversions in the literature, but none
+  is cited. Where the coefficients (`AreaLaw`) came from isn't recorded, except the 1.6 for the
+  space ahead of the tongue tip, which came from hill-climb experiment 12.
+- **The glottal area pulse** (`sources/glottis.rs`): parametric, with no published pulse model
+  cited.
+- **The creatures' anatomy** (seal, alligator, elephant, songbird tract): no source recorded.
+- **Aalto University's speech modelling group.** Nothing in the code, docs or history mentions
+  the group or its work, so we can't say CHIMERA builds on it. Physical vocal-tract models share
+  a lot of ground, so the resemblance may not point to a borrowing.
+
+The two-mass (Ishizaka–Flanagan) folds named in section 2 were designed but never built, so they
+aren't a source of the current sound.
+
+### Data and tools that measure the voice
+
+These judge the voice and aren't part of its sound: the Children's Song Dataset (Choi, Kim,
+Park, Yong & Nam, ISMIR 2020; [csd-comparison.md](csd-comparison.md)); the TSP speech database
+(P. Kabal, McGill University, 2018) aligned with the Montreal Forced Aligner (McAuliffe et al.,
+Interspeech 2017; [speech-comparison.md](speech-comparison.md)); Whisper (`small.en` through
+faster-whisper) on Harvard sentences (IEEE 1969); YIN pitch (de Cheveigné & Kawahara 2002);
+and in `chimera diagnose`, the nasality threshold of Bunton & Story (2011), the
+long-term average speech spectrum of Byrne et al. (1994) and Klatt's default formant
+bandwidths.

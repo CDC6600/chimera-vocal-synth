@@ -64,7 +64,7 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
             // the main-thread mirror of the worklet's airway: same topology and node counts
             let body: BodyMix = arg(req, "body")?;
             let fs: f64 = arg(req, "sampleRate")?;
-            let m = if fs > 60000.0 { 1.0 } else { 2.0 };
+            let m = chimera::voice::human_voice::oversample_for(fs) as f64;
             let i = match st.models.iter().position(|x| x.body == body && x.fs == fs * m) {
                 Some(i) => i,
                 None => {
