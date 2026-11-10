@@ -6,7 +6,7 @@ import { defaultF0, PRESETS, sameBody, type BodyMix } from "./body.ts";
 import { creatureById } from "../wasm/engine.ts";
 import type { ParamDef } from "../wasm/types.ts";
 import { BEAT_PRESETS, BASS_NOTE, beatReady, parseBeat, type BeatStep } from "../wasm/engine.ts";
-import { singNoteOn, singNoteOff, stopSinging, ensureDictionary } from "./singing.ts";
+import { singNoteOn, singNoteOff, stopSinging } from "./singing.ts";
 import { stopSpeaking } from "./speech.ts";
 import { connectMidi, disconnectMidi, type MidiStatus } from "./midi.ts";
 
@@ -140,7 +140,8 @@ export const useStore = create<State>((set, get) => ({
   hold: false,
   heldNotes: [],
   view: { pressure: true, particles: true, grid: false, calipers: true, threeD: false },
-  mode: "play",
+  // the app opens on Sing: hearing a song is the quickest way in (the plugin opens there too)
+  mode: "sing",
   setMode: (m) => {
     const prev = get().mode;
     if (prev === m) return;
@@ -172,7 +173,6 @@ export const useStore = create<State>((set, get) => ({
     if (prev === "sing") stopSinging();
     // speech and song breathe by themselves: a held breath would drone under them
     if (m === "speak" || m === "sing") set({ hold: false });
-    if (m === "sing") ensureDictionary();
     if (m === "beatbox") {
       // a beatboxer waits with the jaw nearly closed; the sounds bring their own breath
       set({ hold: false });

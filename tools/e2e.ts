@@ -27,6 +27,8 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${outDir}/${tag}-0-idle.png` });
+  // the app opens on Sing; this run starts in Play
+  await page.getByRole("radio", { name: "Play" }).click();
   const startBtn = page.getByRole("button", { name: /breathe in and start/i });
   await startBtn.click();
   await page.waitForTimeout(1800);

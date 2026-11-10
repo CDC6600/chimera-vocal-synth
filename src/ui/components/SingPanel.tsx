@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { useStore } from "../store.ts";
-import { useSing, playDemo, stopSinging, soundingSyllable, sungNow, DEMO_SONGS } from "../singing.ts";
+import { useSing, playDemo, stopSinging, soundingSyllable, sungNow, DEMO_SONGS, ensureDictionary } from "../singing.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { V } from "../colors.ts";
 import { Keys } from "./Keys.tsx";
@@ -138,6 +139,9 @@ function DemoSongs() {
 
 /** Sing mode's right column: the piano roll, the lyrics, the spectrum with the ring, the song voice, the keys. */
 export function SingRight() {
+  // the pronouncing dictionary for the lyrics: here rather than on the mode switch, since the app
+  // opens on Sing without one
+  useEffect(ensureDictionary, []);
   const ring = useStore((s) => s.artic.epilarynx >= RING - 0.05);
   const next = useSing((s) => (s.demo ? null : (s.syllables[s.cursor]?.text ?? null)));
   return (
