@@ -85,3 +85,31 @@ fn output_does_not_depend_on_the_host_block_size() {
         assert_eq!(first, None, "block size {block}: differs from 128-sample blocks at sample {first:?}");
     }
 }
+
+/// A held "ah" from the start button: two seconds at this output rate, its RMS over the second.
+fn held_voice_rms(fs: f64) -> f64 {
+    let mut e = Engine::new(fs);
+    e.set_gate(1.0);
+    let mut out = vec![0.0f32; 2 * fs as usize];
+    for chunk in out.chunks_mut(128) {
+        e.render(chunk);
+    }
+    let tail = &out[fs as usize..];
+    assert!(tail.iter().all(|x| x.is_finite()), "{fs} Hz: the voice went NaN");
+    (tail.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>() / tail.len() as f64).sqrt()
+}
+
+#[test]
+fn the_voice_holds_at_a_bluetooth_headsets_sample_rate() {
+    // Issue #33: the browser's context runs at the output device's rate. 2x oversampling put a
+    // 16 kHz device's airway at 32 kHz, below its stable rate: NaN within a second, then silence.
+    // 24 kHz ran at the limiter ceiling. Each rate now sounds like 48 kHz does.
+    let reference = held_voice_rms(48000.0);
+    for fs in [8000.0, 16000.0, 22050.0, 24000.0, 32000.0] {
+        let rms = held_voice_rms(fs);
+        assert!(rms > 0.5 * reference && rms < 2.0 * reference, "{fs} Hz: RMS {rms:.3}, 48 kHz {reference:.3}");
+    }
+    // the usual rates simulate as before (the golden fixtures stand)
+    use chimera::voice::human_voice::oversample_for;
+    assert_eq!([44100.0, 48000.0, 60000.0, 88200.0, 96000.0].map(oversample_for), [2, 2, 2, 1, 1]);
+}

@@ -198,6 +198,15 @@ pub struct HumanVoice {
     pub max_penetration: f64,
 }
 
+/// How many times the airway is oversampled at this output rate: the smallest factor that puts
+/// the simulation above 60 kHz (2× at 44.1 and 48 kHz, 1× at 88.2 and 96 kHz). The tubes keep a
+/// minimum section count, so a lower simulation rate makes the sections shorter than one step of
+/// sound and the airway blows up: at 2× a 16 kHz output (a Bluetooth headset's) went NaN within a
+/// second, and 24 kHz ran at the limiter ceiling (issue #33).
+pub fn oversample_for(fs_out: f64) -> usize {
+    js_max(1.0, (60000.0 / fs_out).floor() + 1.0) as usize
+}
+
 impl HumanVoice {
     /// A voice rendering at `fs_out`, simulating at `fs_out · oversample`.
     pub fn new(fs_out: f64, body: HumanBody, oversample: usize) -> Self {
@@ -268,9 +277,9 @@ impl HumanVoice {
         v
     }
 
-    /// The defaults the browser uses: male body, 2× oversampling below 60 kHz.
+    /// The defaults the browser uses: male body, oversampled by [`oversample_for`].
     pub fn with_defaults(fs_out: f64) -> Self {
-        Self::new(fs_out, BODY_MALE, if fs_out > 60000.0 { 1 } else { 2 })
+        Self::new(fs_out, BODY_MALE, oversample_for(fs_out))
     }
 
     pub fn set_articulation(&mut self, values: &ArticPatch, tip_free: Option<bool>) {
