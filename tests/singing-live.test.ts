@@ -2,7 +2,8 @@
  * Sing mode's live path end to end, without a browser: the key handling in src/ui/singing.ts
  * talks to a stand-in for the audio engine that does what the worklet does with each message
  * (schedule at clock + lead, release by tag, cancel), on the real engine (the wasm build, in its
- * own instance as in the worklet).
+ * own instance as in the worklet). The store's tab switches are tested here too, against the
+ * same stand-in: a second file mocking the engine module would replace this one's mid-run.
  */
 import { describe, expect, mock, test } from "bun:test";
 import { initEngine, WasmVoice } from "./harness.ts";
@@ -266,5 +267,80 @@ describe("keys pressed before the audio has started", () => {
     expect(scheduled).toBe(0);
     expect(useSing.getState().cursor).toBe(before);
     engineStub.scheduleGestures = sg;
+  });
+});
+
+describe("settings that belong to one tab stay in it", () => {
+  const sent: { source: Record<string, unknown>[]; artic: Record<string, unknown>[] } = { source: [], artic: [] };
+  const recording = async () => {
+    const { useStore } = await import("../src/ui/store.ts");
+    const { beatReady } = await import("../src/wasm/engine.ts");
+    engineStub.setSource = (v: Record<string, unknown>) => void sent.source.push(v);
+    engineStub.setArtic = (v: Record<string, unknown>) => void sent.artic.push(v);
+    useStore.setState({ mode: "play", started: true, body: MALE });
+    useStore.getState().setSource({ voiced: true });
+    sent.source.length = sent.artic.length = 0;
+    return { st: useStore.getState, beatReady };
+  };
+  const done = () => {
+    delete engineStub.setSource;
+    delete engineStub.setArtic;
+  };
+
+  test("Play's Whisper doesn't make Speak or Sing voiceless, and Play whispers again on return", async () => {
+    const { st } = await recording();
+    st().setSource({ voiced: false });
+    st().setMode("speak");
+    expect(st().source.voiced).toBe(true);
+    expect(sent.source.at(-1)).toEqual({ voiced: true });
+    st().setMode("sing");
+    expect(st().source.voiced).toBe(true);
+    st().setMode("play");
+    expect(st().source.voiced).toBe(false);
+    expect(sent.source.at(-1)).toEqual({ voiced: false });
+    done();
+  });
+
+  test("Whisper is kept through Bestiary and Beatbox too, and left alone when off", async () => {
+    const { st } = await recording();
+    st().setSource({ voiced: false });
+    st().setMode("bestiary");
+    st().setMode("beatbox");
+    expect(st().source.voiced).toBe(true);
+    st().setMode("play");
+    expect(st().source.voiced).toBe(false);
+    st().setSource({ voiced: true });
+    sent.source.length = 0;
+    st().setMode("speak");
+    st().setMode("play");
+    expect(st().source.voiced).toBe(true);
+    expect(sent.source.filter((v) => "voiced" in v)).toEqual([]);
+    done();
+  });
+
+  test("leaving Beatbox puts back the pose from before it", async () => {
+    const { st, beatReady } = await recording();
+    st().setArtic({ jaw: 0.9, lipAp: 1.2, lipProt: 0.3 }, false);
+    const before = { ...st().artic };
+    st().setMode("beatbox");
+    const ready = beatReady(MALE);
+    expect(st().artic.jaw).toBeCloseTo(ready.jaw!, 6);
+    expect(st().artic.lipAp).toBeCloseTo(ready.lipAp!, 6);
+    st().setMode("play");
+    expect(st().artic).toEqual(before);
+    expect(st().tipFree).toBe(false);
+    expect(sent.artic.at(-1)).toEqual(before);
+    done();
+  });
+
+  test("a pose dragged inside Beatbox doesn't follow the player out either", async () => {
+    const { st } = await recording();
+    st().setArtic({ jaw: 0.7, lipAp: 0.8 }, true);
+    const before = { ...st().artic };
+    st().setMode("beatbox");
+    st().setArtic({ jaw: 0.2, tbY: 2 });
+    st().setMode("speak");
+    expect(st().artic).toEqual(before);
+    done();
   });
 });
