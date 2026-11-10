@@ -5,6 +5,21 @@ airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not f
 The engine is Rust, compiled to WebAssembly for an AudioWorklet; the same code runs natively
 for tests and the `chimera` CLI.
 
+## Vision & scope
+
+1. **One instrument**: a physically modeled voice (lungs, vocal folds, throat, mouth). No
+   samples, no neural audio.
+2. **The web app is the primary surface**: anyone should be able to make songs in it without
+   an LLM's help. Mobile is the likely next surface. The plugin (CLAP/VST3/AU) still ships, but
+   it's secondary.
+3. **More realistic without losing what it is**: the robotic, primitive sound people like today
+   stays available, and every realism change is checked by ear against it.
+4. **Languages enter through one shared front-end design**, not one-off hacks. Each needs a
+   native speaker's check and must leave English unchanged.
+5. **The design language (the vector display) is settled**; the look within it can still evolve.
+6. **Nothing copyrighted in git**; MIT; a deterministic, real-time-safe engine.
+7. **Not now**: a DAW or sequencer, a light theme, MPE, multi-voice dialogue.
+
 ## What it does
 
 - **Play**: drag the tongue, lips and jaw in a live cutaway of the head; vowel pad, encoders,

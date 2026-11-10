@@ -7,6 +7,8 @@ and the CLI) under a React UI. See the README.
 
 - Do what was asked, the simplest way. Side work nobody asked for (experiments, tooling, paid
   runs) is a proposal with its cost. If the work grows well past the estimate, stop and say so.
+- Weigh every feature against README → Vision & scope; anything outside it is a proposal with
+  its cost, not work to do.
 - Before repeating or reversing earlier work, read its history (`git log -- <path>`, `git log -S`).
 - Commit small. The subject names what changed and the trap, in searchable words; the body gives
   the why, what you ruled out, what you ran (with numbers) and what you didn't test.

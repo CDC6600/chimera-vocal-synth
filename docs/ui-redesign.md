@@ -1,5 +1,7 @@
 # UI redesign: the vector display (issue #2)
 
+> Note: the design language (vector display) is settled; the look within it can still evolve. See README → Vision & scope.
+
 The approved mockups are in `docs/mockups/` (open `index.html`). This plan says how to build them into the app on top of the Rust engine. The look is settled; this is about how to get there without breaking the instrument.
 
 ## What the mockups fix
